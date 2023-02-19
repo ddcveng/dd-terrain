@@ -1,0 +1,54 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=0.7in]{geometry}
+
+\title{Renderer volumetrického terénu}
+\author{Eduard Hopfer}
+\date{17.10.2022}
+
+\begin{document}
+
+\maketitle
+
+\section*{Abstrakt}
+Cieľom projektu bude renderovať volumetrický terén, teda nebude to iba výšková mapa, bude možné modelovat[!] rôzne previsy a jaskyne. 
+Budem pracovať s hybridným modelom, s diskrétnou aj spojitou reprezentáciou. 
+Základ bude diskrétny model z kvazi-voxelov, ktory potom technikami z [ref#1] vyhladim do spojitej polochy. 
+Rendering bude real-time a na vysledny 3d model sa bude dat pozerat z 
+roznych stran z pohladu lietajucej kamery.
+
+\section*{Reprezentácia dát}
+V diskretnom pripade bude terén reprezentovaný ako 2d grid materiálových stackov. Je to v podstate voxelový terén, kde bloky majú neuniformnú výšku. Táto reprezentácia je použitá v [ref#1], kde sú popísané nejaké jej výhody. Jednotlivé časti stackov budú mať priradený "materiál" ako kameň, hlina, voda, vzduch. Ten bude určovať, ako terén v každom bode vyzerá a pripadne fyzikálne správanie (vid Mozne rozšírenia).
+
+V spojitom pripade bude teren reprezentovany ako implicitna plocha. 
+Tuto plochu dostanem z diskretneho modelu techinkou popisanou v [ref#1].
+
+\section*{Rendering}
+Z diskretneho modelu viem priamo renderovat geometriu jednotlivych stackov. 
+Na renderovanie spojitej implicitnej plochy pouzijem algoritmus marching cubes [ref#2]
+
+\section*{Implementačné detaily}
+Program by bol napísaný v jazyku Rust s pomocou OpenGL a GLFW [ref#3]. Na shadere použijem jazyk GLSL.
+Takto stále budem mať low-level silu používania OpenGL ale dostanem typované API a výhody moderných programovacích jazykov.
+
+\section*{Mozne rozšírenia}
+Podla toho, ako budem stihat, alebo na doladenie obtiaznosti prace mi napadli taketo pripadne rozsirenia.
+
+\begin{itemize}
+    \item Proceduralne generovanie zobrazeneho terenu
+    \item Export vygenerovaného modelu v nejakom rozumnom formáte, ktorý sa dá použiť aj mimo moju aplikáciu
+    \begin{itemize}
+        \item Import modelov
+    \end{itemize}
+    \item Editor diskretneho/implicitneho modelu
+    \item Fyzikálne stabilizácia terénu popísaná v [ref#1]
+\end{itemize}
+
+\section*{Referencie}
+\begin{enumerate}
+    \item https://perso.liris.cnrs.fr/eric.galin/Articles/2009-arches.pdf
+    \item https://en.wikipedia.org/wiki/Marching\_cubes
+    \item https://docs.rs/luminance/latest/luminance/
+\end{enumerate}
+
+\end{document}

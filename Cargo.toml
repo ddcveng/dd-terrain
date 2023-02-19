@@ -1,0 +1,15 @@
+[package]
+name = "dd-terrain"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+glfw = "0.45.0"
+luminance = "0.47.0"
+luminance-derive = "0.10.0"
+luminance-front = "0.6.1"
+luminance-glfw = "0.18.3"
+luminance-windowing = "0.10.1"
+
