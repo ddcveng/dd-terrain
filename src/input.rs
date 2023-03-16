@@ -1,4 +1,4 @@
-use glfw::{Action, Key, WindowEvent};
+use glfw::{Action, Key, MouseButton, WindowEvent};
 
 #[derive(Debug)]
 pub enum Direction {
@@ -16,6 +16,10 @@ pub enum InputAction {
     BeginMove { dir: Direction },
     EndMove { dir: Direction },
     CursorMoved { x: f64, y: f64 },
+    Scroll(f64, f64),
+    MousePressed { button: MouseButton },
+    KeyPressed { key: Key },
+    Char { c: char },
     Capture,
 }
 
@@ -42,7 +46,7 @@ pub fn translate_event(event: WindowEvent) -> Option<InputAction> {
                 dir: Direction::Down,
             }),
             Key::Space => Some(InputAction::Capture),
-            _ => None,
+            _ => Some(InputAction::KeyPressed { key }),
         },
         WindowEvent::Key(key, _, Action::Release, _) => match key {
             Key::W => Some(InputAction::EndMove {
@@ -63,7 +67,12 @@ pub fn translate_event(event: WindowEvent) -> Option<InputAction> {
             }),
             _ => None,
         },
+        WindowEvent::Char(c) => Some(InputAction::Char { c }),
         WindowEvent::CursorPos(x, y) => Some(InputAction::CursorMoved { x, y }),
+        WindowEvent::Scroll(x, y) => Some(InputAction::Scroll(x, y)),
+        WindowEvent::MouseButton(button, Action::Press, _) => {
+            Some(InputAction::MousePressed { button })
+        }
         _ => None,
     }
 }

@@ -14,3 +14,4 @@ luminance-glfw = "0.18.3"
 luminance-windowing = "0.10.1"
 wavefront_obj = "10.0.0"
 cgmath = { version = "0.18.0", features = ["swizzle"] }
+imgui = "0.10.0"
