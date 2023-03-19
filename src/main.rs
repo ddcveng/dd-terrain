@@ -1,23 +1,27 @@
-use std::time::Duration;
-
-use glium::backend::Facade;
 use glium::glutin::event::{Event, WindowEvent};
 use glium::glutin::event_loop::{ControlFlow, EventLoop};
-use glium::{uniform, Surface, implement_vertex};
+use glium::{uniform, Surface};
+
+use glutin::event::VirtualKeyCode;
+use glutin::window::Window;
+use glutin::window::CursorGrabMode;
+
+use cgmath::{Rad, Point3, Vector3, EuclideanSpace};
 
 mod imgui_wrapper;
-use glutin::event::VirtualKeyCode;
 use imgui_wrapper::ImguiWrapper;
 
 mod minecraft;
+
 mod camera;
 use camera::Camera;
+
 mod geometry;
+
 mod infrastructure;
 use infrastructure::input::{InputAction, self, InputConsumer};
 use infrastructure::render_fragment::RenderFragmentBuilder;
 use infrastructure::{RenderState, Timing};
-use cgmath::{Rad, Point3, Vector3, EuclideanSpace};
 
 const TITLE: &str = "dd-terrain";
 const VS_SOURCE: &str = include_str!("shaders/vs.glsl");
@@ -65,7 +69,6 @@ fn main() {
     };
     let mut actions: Vec<InputAction> = Vec::new();
 
-    // Standard winit event loop
     event_loop.run(move |event, _, control_flow| match event {
         Event::NewEvents(_) => {
             actions.clear();
@@ -73,7 +76,7 @@ fn main() {
         }
         Event::MainEventsCleared => {
             let gl_window = display.gl_window();
-            render_state = create_state(&actions, render_state, timings);
+            render_state = create_state(&actions, render_state, timings, gl_window.window());
             if !render_state.should_render {
                 *control_flow = ControlFlow::Exit;
                 return;
@@ -154,7 +157,7 @@ fn get_imgui_builder(state: &RenderState, camera: &Camera) -> impl FnOnce(&imgui
     builder
 }
 
-fn create_state(events: &Vec<InputAction>, old_state: RenderState, timing: Timing) -> RenderState {
+fn create_state(events: &Vec<InputAction>, old_state: RenderState, timing: Timing, window: &Window) -> RenderState {
     let mut cursor_captured = old_state.cursor_captured;
     let mut should_render = true;
     let mut render_wireframe = old_state.render_wireframe;
@@ -162,7 +165,10 @@ fn create_state(events: &Vec<InputAction>, old_state: RenderState, timing: Timin
     for action in events {
         match action {
             InputAction::Quit => should_render = false,
-            InputAction::Capture => cursor_captured = !cursor_captured, // TODO: hide cursor
+            InputAction::Capture => {
+                cursor_captured = !cursor_captured; // TODO: hide cursor
+                capture_cursor(window, cursor_captured);
+            },
             InputAction::KeyPressed { key: VirtualKeyCode::B } => render_wireframe = !render_wireframe,
             _ => (),
         };
@@ -174,6 +180,16 @@ fn create_state(events: &Vec<InputAction>, old_state: RenderState, timing: Timin
         should_render,
         render_wireframe,
     }
+}
+
+fn capture_cursor(window: &Window, capture: bool) {
+    let grab_mode = match capture {
+        true => CursorGrabMode::Confined,
+        false => CursorGrabMode::None,
+    };
+
+    window.set_cursor_grab(grab_mode).unwrap();
+    window.set_cursor_visible(capture == false);
 }
 
 fn create_window() -> (EventLoop<()>, glium::Display) {

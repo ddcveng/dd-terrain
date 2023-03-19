@@ -8,8 +8,6 @@ pub struct RenderState {
     pub render_wireframe: bool,
 }
 
-const MILLIS_IN_SECOND: f32 = 1000.;
-
 #[derive(Debug, Copy, Clone)]
 pub struct Timing {
     pub delta_time: Duration,
