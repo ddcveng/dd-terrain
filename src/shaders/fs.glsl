@@ -1,12 +1,13 @@
+#version 330
+
+in vec3 frag_color;
 in vec3 v_normal;
 
-out vec3 frag_color;
+out vec3 color;
 
 void main() {
-    vec3 color = vec3(0.6, 0.6, 0.6);
-    vec3 light_dir = vec3(0., -1., -0.5);
+    vec3 light_dir = normalize(vec3(-2. ,3., 2.));
+    float diffusion = dot(v_normal, light_dir);
 
-    float diffusion = dot(v_normal, -light_dir);
-
-    frag_color = color * diffusion;
+    color = frag_color * diffusion;
 }

@@ -1,4 +1,4 @@
-use crate::{input::Direction, InputAction, InputConsumer};
+use crate::{input::Direction, InputAction, InputConsumer, RenderState};
 use cgmath::{
     perspective, Angle, InnerSpace, Matrix4, Point2, Point3, Rad, SquareMatrix, Vector2, Vector3,
     Vector4, Zero,
@@ -10,11 +10,11 @@ const SPHERE_RADIUS: f32 = 5.0;
 const EPSILON: f32 = 0.1;
 
 pub struct Camera {
-    pub view: Matrix4<f32>,
+    pub world_to_view: Matrix4<f32>,
+    pub view_to_world: Matrix4<f32>,
     pub projection: Matrix4<f32>,
     translation: Vector3<f32>,
     rotation: Option<Vector2<f32>>,
-    cursor_position: Point2<f64>,
     //    look_at_dir: Vector3<f32>,
     //    theta: Rad<f32>,
     //    phi: Rad<f32>,
@@ -32,20 +32,22 @@ impl Camera {
     ) -> Self {
         let projection = perspective(fovy, aspect_ratio, near_clipping_plane, far_clipping_plane);
         let view = Matrix4::<f32>::look_at_rh(position, look_at, world_up_vector);
+        let view_inverse = view.invert().unwrap();
 
         Camera {
-            view,
+            world_to_view: view,
+            view_to_world: view_inverse,
             projection,
             translation: Vector3::new(0., 0., 0.),
             rotation: None,
-            cursor_position: Point2::new(0., 0.),
         }
     }
 
     pub fn update(&mut self, delta_time: f32) {
         let translation = Matrix4::from_translation(self.translation * delta_time);
-        self.view = translation * self.view;
+        self.world_to_view = translation * self.world_to_view;
 
+        // TODO: use quaternions for nicer rotations
         if let Some(rotation) = self.rotation {
             let rotation_parts_sum = rotation.x.abs() + rotation.y.abs();
             if rotation_parts_sum < EPSILON {
@@ -60,14 +62,24 @@ impl Camera {
             let yaw = ROTATION_SPEED * (1.0 - pitch_factor) * yaw_sign * delta_time;
 
             let rotation = Matrix4::from_angle_x(pitch) * Matrix4::from_angle_y(yaw);
-            self.view = rotation * self.view;
+            self.world_to_view = rotation * self.world_to_view;
             self.rotation = None;
         }
+
+        self.view_to_world = self.world_to_view.invert().unwrap();
+    }
+
+    pub fn get_position(&self) -> Point3<f32> {
+        return Point3::from_homogeneous(self.view_to_world.w);
+    }
+
+    pub fn get_direction(&self) -> Vector3<f32> {
+        return self.view_to_world.z.truncate();
     }
 }
 
 impl InputConsumer for Camera {
-    fn consume(&mut self, action: &InputAction, delta_t: f32, cursor_captured: bool) -> () {
+    fn consume(&mut self, action: &InputAction, state: &RenderState) -> () {
         match action {
             InputAction::BeginMove { dir } => match dir {
                 Direction::Forward => self.translation.z = CAMERA_MOVE_SPEED,
@@ -88,18 +100,15 @@ impl InputConsumer for Camera {
             _ => (),
         }
 
-        if !cursor_captured {
+        if !state.cursor_captured {
             return;
         }
 
         if let InputAction::CursorMoved { x, y } = action {
-            let new_cursor_position = Point2::new(*x, *y);
-            let cursor_delta = new_cursor_position - self.cursor_position;
-            let rotation_direction = Vector2::new(cursor_delta.x as f32, cursor_delta.y as f32)
+            let rotation_direction = Vector2::new(*x as f32, *y as f32)
                 .normalize_to(SPHERE_RADIUS);
 
             self.rotation = Some(rotation_direction);
-            self.cursor_position = new_cursor_position;
         }
     }
 }
