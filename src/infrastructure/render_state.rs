@@ -4,8 +4,17 @@ use std::time::{Duration, Instant};
 pub struct RenderState {
     pub timing: Timing,
     pub cursor_captured: bool,
-    pub should_render: bool, // TODO: remove
     pub render_wireframe: bool,
+}
+
+impl RenderState {
+    pub fn new() -> Self {
+        RenderState { 
+            timing: Timing::new(),
+            cursor_captured: false,
+            render_wireframe: false 
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]

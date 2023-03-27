@@ -60,27 +60,21 @@ fn main() {
     );
 
     // Timer for FPS calculation
-    let mut timings = Timing::new();
-    let mut render_state = RenderState {
-        timing: Timing::new(),
-        cursor_captured: false,
-        should_render: true,
-        render_wireframe: false,
-    };
+    let mut render_state = RenderState::new();
     let mut actions: Vec<InputAction> = Vec::new();
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::NewEvents(_) => {
             actions.clear();
-            timings.record_frame();
+            render_state.timing.record_frame();
         }
         Event::MainEventsCleared => {
             let gl_window = display.gl_window();
-            render_state = create_state(&actions, render_state, timings, gl_window.window());
-            if !render_state.should_render {
+            let Some(new_state) = create_state(&actions, render_state, gl_window.window()) else {
                 *control_flow = ControlFlow::Exit;
                 return;
-            }
+            };
+            render_state = new_state;
 
             imgui_data.prepare(gl_window.window(), render_state.timing.delta_time);
 
@@ -157,7 +151,7 @@ fn get_imgui_builder(state: &RenderState, camera: &Camera) -> impl FnOnce(&imgui
     builder
 }
 
-fn create_state(events: &Vec<InputAction>, old_state: RenderState, timing: Timing, window: &Window) -> RenderState {
+fn create_state(events: &Vec<InputAction>, old_state: RenderState, window: &Window) -> Option<RenderState> {
     let mut cursor_captured = old_state.cursor_captured;
     let mut should_render = true;
     let mut render_wireframe = old_state.render_wireframe;
@@ -166,7 +160,7 @@ fn create_state(events: &Vec<InputAction>, old_state: RenderState, timing: Timin
         match action {
             InputAction::Quit => should_render = false,
             InputAction::Capture => {
-                cursor_captured = !cursor_captured; // TODO: hide cursor
+                cursor_captured = !cursor_captured;
                 capture_cursor(window, cursor_captured);
             },
             InputAction::KeyPressed { key: VirtualKeyCode::B } => render_wireframe = !render_wireframe,
@@ -174,12 +168,15 @@ fn create_state(events: &Vec<InputAction>, old_state: RenderState, timing: Timin
         };
     }
 
-    RenderState {
-        timing,
-        cursor_captured,
-        should_render,
-        render_wireframe,
+    if !should_render {
+        return None;
     }
+
+    Some(RenderState {
+        timing: old_state.timing,
+        cursor_captured,
+        render_wireframe,
+    })
 }
 
 fn capture_cursor(window: &Window, capture: bool) {
