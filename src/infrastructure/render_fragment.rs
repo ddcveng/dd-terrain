@@ -1,6 +1,5 @@
 use std::marker::PhantomData;
 
-use glium::PolygonMode;
 use glium::index::IndicesSource;
 use glium::program::Program;
 use glium::uniforms::Uniforms;
@@ -17,36 +16,57 @@ pub enum FragmentCreationError {
 pub struct RenderFragment<'a, T, I>
 where
     T: Copy,
-    //I: Into<IndicesSource<'a>> + 'a,
     I: 'a,
     IndicesSource<'a>: From<&'a I>,
 {
     vertex_buffer: VertexBuffer<T>,
     indices: I,
     program: Program, // no compute shaders for now, separate entity
-    //uniforms: Vec<dyn AsUniformValue>,
     _marker: PhantomData<&'a ()>,
 }
 
 impl<'a, T, I> RenderFragment<'a, T, I>
 where
     T: Copy,
-    //I: Into<IndicesSource<'a>>,
     I: 'a,
     IndicesSource<'a>: From<&'a I>,
 {
     // TODO: check compatibility of uniforms and print warnings in debug mode
-    pub fn render<U>(&'a self, target: &mut glium::Frame, uniforms: &U) 
+    pub fn render<U>(
+        &'a self,
+        target: &mut glium::Frame,
+        uniforms: &U,
+        draw_parameters: Option<glium::DrawParameters>
+    ) 
     where U: Uniforms,
     {
-        let params = glium::DrawParameters {
-            backface_culling: glium::BackfaceCullingMode::CullClockwise,
-            ..Default::default()
-        };
+        let params = draw_parameters.unwrap_or_else(|| Self::default_draw_parameters());
+
+        target.draw(
+            &self.vertex_buffer,
+            &self.indices, 
+            &self.program, 
+            uniforms, 
+            &params
+        )
+        .unwrap();
+    }
+
+    pub fn render_instanced<U, D>(
+        &'a self,
+        target: &mut glium::Frame,
+        uniforms: &U,
+        instance_data: &VertexBuffer<D>,
+        draw_parameters: Option<glium::DrawParameters>) 
+    where 
+        U: Uniforms,
+        D: Copy,
+    {
+        let params = draw_parameters.unwrap_or_else(|| Self::default_draw_parameters());
 
         target
             .draw(
-                &self.vertex_buffer,
+                (&self.vertex_buffer, instance_data.per_instance().unwrap()),
                 &self.indices,
                 &self.program,
                 uniforms,
@@ -55,36 +75,17 @@ where
             .unwrap();
     }
 
-    pub fn render_instanced<U, D>(&'a self, target: &mut glium::Frame, uniforms: &U, instance_data: &VertexBuffer<D>, wireframe: bool) 
-    where 
-        U: Uniforms,
-        D: Copy,
-    {
-        let polygon_mode = match wireframe {
-            true => PolygonMode::Line,
-            false => PolygonMode::Fill,
-        };
-
-        let draw_parameters = glium::DrawParameters {
-            depth: glium::Depth { 
+    pub fn default_draw_parameters() -> glium::DrawParameters<'a> {
+        glium::DrawParameters {
+            backface_culling: glium::BackfaceCullingMode::CullClockwise,
+            polygon_mode: glium::PolygonMode::Fill,
+            depth: glium::Depth {
                 test: glium::DepthTest::IfLess,
                 write: true, 
-                ..Default::default() 
+                ..Default::default()
             },
-            backface_culling: glium::BackfaceCullingMode::CullClockwise,
-            polygon_mode,
             ..Default::default()
-        };
-
-        target
-            .draw(
-                (&self.vertex_buffer, instance_data.per_instance().unwrap()),
-                &self.indices,
-                &self.program,
-                uniforms,
-                &draw_parameters,
-            )
-            .unwrap();
+        }
     }
 }
 

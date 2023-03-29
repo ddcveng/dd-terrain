@@ -8,19 +8,22 @@ pub struct BlockData {
 }
 implement_vertex!(BlockData, offset);
 
-const WORLD_FILE: &str = r#"C:\Users\edo15\AppData\Roaming\.minecraft\saves\bananko\region\r.0.0.mca"#;
+// TODO: get file path from user somehow
+const WORLD_FILE: &str = r#"/home/ddcveng/.minecraft/saves/banan/region/r.0.0.mca"#;
+//const WORLD_FILE: &str = r#"C:\Users\edo15\AppData\Roaming\.minecraft\saves\bananko\region\r.0.0.mca"#;
+
 const AIR_BLOCK_ID: &str = "minecraft:air";
 
 pub fn get_chunk() -> Vec<BlockData> {
     let file = std::fs::File::open(WORLD_FILE).unwrap();
 
     let mut region = Region::from_stream(file).unwrap();
-    let data = region.read_chunk(6, 2).unwrap().unwrap();
+    let data = region.read_chunk(1, 0).unwrap().unwrap();
 
     let mut blocks_in_chunk = Vec::new();
     let chunk: CurrentJavaChunk = from_bytes(data.as_slice()).unwrap();
     if let Some(tower) = chunk.sections {
-        let y = 112;
+        let y = -60;
 
         if let Some(section) = tower.get_section_for_y(y) {
             let block_states = &section.block_states;

@@ -1,6 +1,7 @@
 use glium::glutin::event::{Event, WindowEvent};
 use glium::glutin::event_loop::{ControlFlow, EventLoop};
-use glium::{uniform, Surface};
+use glium::index::IndicesSource;
+use glium::{uniform, Surface, Frame, VertexBuffer};
 
 use glutin::event::VirtualKeyCode;
 use glutin::window::Window;
@@ -20,8 +21,8 @@ mod geometry;
 
 mod infrastructure;
 use infrastructure::input::{InputAction, self, InputConsumer};
-use infrastructure::render_fragment::RenderFragmentBuilder;
-use infrastructure::{RenderState, Timing};
+use infrastructure::render_fragment::{RenderFragmentBuilder, RenderFragment};
+use infrastructure::RenderState;
 
 const TITLE: &str = "dd-terrain";
 const VS_SOURCE: &str = include_str!("shaders/vs.glsl");
@@ -59,7 +60,6 @@ fn main() {
         Z_FAR,
     );
 
-    // Timer for FPS calculation
     let mut render_state = RenderState::new();
     let mut actions: Vec<InputAction> = Vec::new();
 
@@ -96,16 +96,7 @@ fn main() {
             target.clear_depth(1.0);
 
             // Draw Scene
-            let model: [[f32; 4]; 4] = cgmath::Matrix4::from_scale(0.3).into();
-            let projection: [[f32; 4]; 4] = camera.projection.into();
-            let view: [[f32; 4]; 4] = camera.world_to_view.into();
-            let uni = uniform! {
-                projection: projection,
-                view: view,
-                model: model,
-            };
-
-            triangle_renderer.render_instanced(&mut target, &uni, &instance_positions, render_state.render_wireframe);
+            render_world(&triangle_renderer, &mut target, &instance_positions, &camera, &render_state);
 
             // Draw imgui last so it shows on top of everything
             let imgui_frame_builder = get_imgui_builder(&render_state, &camera);
@@ -128,6 +119,45 @@ fn main() {
             }
         }
     });
+}
+
+fn render_world<'a, D, T, I>(
+    fragment: &'a RenderFragment<'a, T, I>,
+    target: &mut Frame,
+    instance_data: &VertexBuffer<D>,
+    camera: &Camera,
+    state: &RenderState,
+) -> ()
+    where D: Copy,
+    T: Copy,
+    I: 'a,
+    IndicesSource<'a>: From<&'a I>,
+{
+    let model: [[f32; 4]; 4] = cgmath::Matrix4::from_scale(0.3).into();
+    let projection: [[f32; 4]; 4] = camera.projection.into();
+    let view: [[f32; 4]; 4] = camera.world_to_view.into();
+    let uni = uniform! {
+        projection: projection,
+        view: view,
+        model: model,
+    };
+    
+    let polygon_mode = match state.render_wireframe {
+        true => glium::PolygonMode::Line,
+        false => glium::PolygonMode::Fill,
+    };
+    let draw_parameters = glium::DrawParameters {
+            backface_culling: glium::BackfaceCullingMode::CullClockwise,
+            polygon_mode,
+            depth: glium::Depth {
+                test: glium::DepthTest::IfLess,
+                write: true, 
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+    fragment.render_instanced(target, &uni, &instance_data, Some(draw_parameters));
 }
 
 fn get_imgui_builder(state: &RenderState, camera: &Camera) -> impl FnOnce(&imgui::Ui) {
