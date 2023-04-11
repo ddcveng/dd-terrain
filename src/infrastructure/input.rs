@@ -1,5 +1,5 @@
-use glium::glutin::event::{Event, WindowEvent, VirtualKeyCode};
-use glutin::event::{ElementState, DeviceEvent};
+use glium::glutin::event::{Event, VirtualKeyCode, WindowEvent};
+use glutin::event::{DeviceEvent, ElementState};
 
 use crate::RenderState;
 
@@ -27,30 +27,43 @@ pub enum InputAction {
     KeyPressed { key: Key },
     Char { c: char },
     Capture,
+    Resized(u32, u32),
 }
 
 pub fn translate_event(event: Event<()>) -> Option<InputAction> {
     match event {
-        Event::WindowEvent { event: window_event, .. } => translate_window_event(window_event),
-        Event::DeviceEvent { event: device_event, .. } => translate_device_event(device_event),
+        Event::WindowEvent {
+            event: window_event,
+            ..
+        } => translate_window_event(window_event),
+        Event::DeviceEvent {
+            event: device_event,
+            ..
+        } => translate_device_event(device_event),
         _ => None,
     }
 }
 
 fn translate_window_event(event: WindowEvent) -> Option<InputAction> {
     match event {
-        WindowEvent::CloseRequested => {
-            Some(InputAction::Quit)
-        }
-        WindowEvent::KeyboardInput { device_id: _, input, is_synthetic: false } => handle_keypress(&input),
+        WindowEvent::CloseRequested => Some(InputAction::Quit),
+        WindowEvent::KeyboardInput {
+            device_id: _,
+            input,
+            is_synthetic: false,
+        } => handle_keypress(&input),
         WindowEvent::ReceivedCharacter(c) => Some(InputAction::Char { c }),
+        WindowEvent::Resized(size) => Some(InputAction::Resized(size.width, size.height)),
         _ => None,
     }
 }
 
 fn translate_device_event(event: DeviceEvent) -> Option<InputAction> {
     match event {
-        DeviceEvent::MouseMotion { delta } => Some(InputAction::CursorMoved { x: delta.0, y: delta.1 }),
+        DeviceEvent::MouseMotion { delta } => Some(InputAction::CursorMoved {
+            x: delta.0,
+            y: delta.1,
+        }),
         _ => None,
     }
 }
@@ -66,7 +79,7 @@ fn handle_keypress(event: &glutin::event::KeyboardInput) -> Option<InputAction> 
         if pressed {
             Some(InputAction::BeginMove { dir })
         } else {
-            Some(InputAction::EndMove { dir  })
+            Some(InputAction::EndMove { dir })
         }
     };
 
