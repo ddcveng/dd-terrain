@@ -2,23 +2,27 @@ use fastanvil::{CurrentJavaChunk, Region};
 use fastnbt::from_bytes;
 use glium::implement_vertex;
 
+use crate::model::discrete::BlockType;
+
 #[derive(Clone, Copy)]
 pub struct BlockData {
     offset: [f32; 3],
+    instance_color: [f32; 3],
+    //block_type: u8,
 }
-implement_vertex!(BlockData, offset);
+implement_vertex!(BlockData, offset, instance_color);
 
+// chunk 31 31 in r.-1.-1.mca
+// height -60
 // TODO: get file path from user somehow
-const WORLD_FILE: &str = r#"/home/ddcveng/.minecraft/saves/banan/region/r.0.0.mca"#;
+const WORLD_FILE: &str = r#"/home/dd/.minecraft/saves/banan_flat/region/r.-1.-1.mca"#;
 //const WORLD_FILE: &str = r#"C:\Users\edo15\AppData\Roaming\.minecraft\saves\bananko\region\r.0.0.mca"#;
-
-const AIR_BLOCK_ID: &str = "minecraft:air";
 
 pub fn get_chunk() -> Vec<BlockData> {
     let file = std::fs::File::open(WORLD_FILE).unwrap();
 
     let mut region = Region::from_stream(file).unwrap();
-    let data = region.read_chunk(1, 0).unwrap().unwrap();
+    let data = region.read_chunk(31, 31).unwrap().unwrap();
 
     let mut blocks_in_chunk = Vec::new();
     let chunk: CurrentJavaChunk = from_bytes(data.as_slice()).unwrap();
@@ -34,13 +38,41 @@ pub fn get_chunk() -> Vec<BlockData> {
                 let z = (i & 0x00F0) >> 4;
 
                 let block = &palette[palette_index];
-                //println!("{}", block.encoded_description());
-                if block.name() != AIR_BLOCK_ID {
-                   blocks_in_chunk.push(BlockData { offset: [x as f32, y as f32, z as f32] }); 
-                }
+                let block_type = get_block_type(block.name());
+
+                match block_type {
+                    BlockType::Unknown => println!("unknown block {}", block.name()),
+                    BlockType::Air => continue,
+                    _ => (),
+                };
+
+                let block_data = BlockData {
+                    offset: [x as f32, y as f32, z as f32],
+                    instance_color: get_block_color(block_type),
+                };
+                blocks_in_chunk.push(block_data);
             }
         }
     }
 
     blocks_in_chunk
+}
+
+pub fn get_block_type(block_id: &str) -> BlockType {
+    match block_id {
+        "minecraft:dirt" => BlockType::Dirt,
+        "minecraft:stone" => BlockType::Stone,
+        "minecraft:grass_block" => BlockType::Grass,
+        "minecraft:air" => BlockType::Air,
+        _ => BlockType::Unknown,
+    }
+}
+
+fn get_block_color(block_type: BlockType) -> [f32; 3] {
+    match block_type {
+        BlockType::Grass => [0.09, 0.4, 0.05],
+        BlockType::Dirt => [0.36, 0.09, 0.05],
+        BlockType::Stone => [0.6, 0.6, 0.6],
+        _ => [1.0, 0.0, 0.0],
+    }
 }

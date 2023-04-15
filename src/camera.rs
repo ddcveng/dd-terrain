@@ -3,8 +3,8 @@ use cgmath::{
     perspective, Angle, InnerSpace, Matrix4, Point3, Rad, SquareMatrix, Vector2, Vector3,
 };
 
-const CAMERA_MOVE_SPEED: f32 = 2.0;
-const SENSITIVITY: f32 = 0.004;
+const CAMERA_MOVE_SPEED: f32 = 5.0;
+const SENSITIVITY: f32 = 0.010;
 const SPHERE_RADIUS: f32 = 5.0;
 
 pub struct Camera {

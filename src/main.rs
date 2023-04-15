@@ -1,13 +1,13 @@
 use glium::glutin::event::{Event, WindowEvent};
 use glium::glutin::event_loop::{ControlFlow, EventLoop};
 use glium::index::IndicesSource;
-use glium::{uniform, Surface, Frame, VertexBuffer};
+use glium::{uniform, Frame, Surface, VertexBuffer};
 
 use glutin::event::VirtualKeyCode;
-use glutin::window::Window;
 use glutin::window::CursorGrabMode;
+use glutin::window::Window;
 
-use cgmath::{Rad, Point3, Vector3, EuclideanSpace};
+use cgmath::{EuclideanSpace, Point3, Rad, Vector3};
 
 mod imgui_wrapper;
 use imgui_wrapper::ImguiWrapper;
@@ -20,16 +20,18 @@ use camera::Camera;
 mod geometry;
 
 mod infrastructure;
-use infrastructure::input::{InputAction, self, InputConsumer};
-use infrastructure::render_fragment::{RenderFragmentBuilder, RenderFragment};
+use infrastructure::input::{self, InputAction, InputConsumer};
+use infrastructure::render_fragment::{RenderFragment, RenderFragmentBuilder};
 use infrastructure::RenderState;
+
+mod model;
 
 const TITLE: &str = "dd-terrain";
 const VS_SOURCE: &str = include_str!("shaders/vs.glsl");
 const FS_SOURCE: &str = include_str!("shaders/fs.glsl");
 const FOVY: Rad<f32> = Rad(std::f32::consts::FRAC_PI_2);
 const Z_NEAR: f32 = 0.1;
-const Z_FAR: f32 = 10.;
+const Z_FAR: f32 = 50.;
 
 fn main() {
     let (event_loop, display) = create_window();
@@ -96,7 +98,13 @@ fn main() {
             target.clear_depth(1.0);
 
             // Draw Scene
-            render_world(&triangle_renderer, &mut target, &instance_positions, &camera, &render_state);
+            render_world(
+                &triangle_renderer,
+                &mut target,
+                &instance_positions,
+                &camera,
+                &render_state,
+            );
 
             // Draw imgui last so it shows on top of everything
             let imgui_frame_builder = get_imgui_builder(&render_state, &camera);
@@ -128,12 +136,13 @@ fn render_world<'a, D, T, I>(
     camera: &Camera,
     state: &RenderState,
 ) -> ()
-    where D: Copy,
+where
+    D: Copy,
     T: Copy,
     I: 'a,
     IndicesSource<'a>: From<&'a I>,
 {
-    let model: [[f32; 4]; 4] = cgmath::Matrix4::from_scale(0.3).into();
+    let model: [[f32; 4]; 4] = cgmath::Matrix4::from_scale(1.0).into();
     let projection: [[f32; 4]; 4] = camera.projection.into();
     let view: [[f32; 4]; 4] = camera.world_to_view.into();
     let uni = uniform! {
@@ -141,21 +150,21 @@ fn render_world<'a, D, T, I>(
         view: view,
         model: model,
     };
-    
+
     let polygon_mode = match state.render_wireframe {
         true => glium::PolygonMode::Line,
         false => glium::PolygonMode::Fill,
     };
     let draw_parameters = glium::DrawParameters {
-            backface_culling: glium::BackfaceCullingMode::CullClockwise,
-            polygon_mode,
-            depth: glium::Depth {
-                test: glium::DepthTest::IfLess,
-                write: true, 
-                ..Default::default()
-            },
+        backface_culling: glium::BackfaceCullingMode::CullClockwise,
+        polygon_mode,
+        depth: glium::Depth {
+            test: glium::DepthTest::IfLess,
+            write: true,
             ..Default::default()
-        };
+        },
+        ..Default::default()
+    };
 
     fragment.render_instanced(target, &uni, &instance_data, Some(draw_parameters));
 }
@@ -166,6 +175,24 @@ fn get_imgui_builder(state: &RenderState, camera: &Camera) -> impl FnOnce(&imgui
     let fps = state.timing.fps();
     let is_cursor_captured = state.cursor_captured;
 
+    // negative regions are indexed shifted by 1 to differentiate between positive and negative
+    // zeros
+    let (region_x, region_z): (i32, i32) = {
+        let mut bias: i32 = if position.x < 0.0 { -1 } else { 0 };
+        let x = (position.x / (32.0 * 16.0)) as i32 + bias;
+
+        bias = if position.z < 0.0 { -1 } else { 0 };
+        let y = (position.z / (32.0 * 16.0)) as i32 + bias;
+
+        (x, y)
+    };
+    let (chunk_x, chunk_z): (u32, u32) = {
+        let x_within_region = ((position.x / 16.0).abs() as u32) % 32;
+        let z_within_region = ((position.z / 16.0).abs() as u32) % 32;
+
+        (x_within_region, z_within_region)
+    };
+
     let builder = move |ui: &imgui::Ui| {
         ui.window("stats")
             //.size([270.0, 120.0], imgui::Condition::FirstUseEver)
@@ -173,15 +200,29 @@ fn get_imgui_builder(state: &RenderState, camera: &Camera) -> impl FnOnce(&imgui
                 ui.text(format!("fps: {:.2}", fps));
                 ui.text(format!("cursor captured: {}", is_cursor_captured));
                 ui.separator();
-                ui.text(format!("position: x: {:.2} y: {:.2} z: {:.2}", position.x, position.y, position.z));
-                ui.text(format!("direction: x: {:.2} y: {:.2} z: {:.2}", direction.x, direction.y, direction.z));
+                ui.text(format!(
+                    "position: x: {:.2} y: {:.2} z: {:.2}",
+                    position.x, position.y, position.z
+                ));
+                ui.text(format!(
+                    "direction: x: {:.2} y: {:.2} z: {:.2}",
+                    direction.x, direction.y, direction.z
+                ));
+
+                ui.separator();
+                ui.text(format!("region: [{}, {}]", region_x, region_z));
+                ui.text(format!("chunk: [{}, {}]", chunk_x, chunk_z));
             });
     };
 
     builder
 }
 
-fn create_state(events: &Vec<InputAction>, old_state: RenderState, window: &Window) -> Option<RenderState> {
+fn create_state(
+    events: &Vec<InputAction>,
+    old_state: RenderState,
+    window: &Window,
+) -> Option<RenderState> {
     let mut cursor_captured = old_state.cursor_captured;
     let mut should_render = true;
     let mut render_wireframe = old_state.render_wireframe;
@@ -192,8 +233,10 @@ fn create_state(events: &Vec<InputAction>, old_state: RenderState, window: &Wind
             InputAction::Capture => {
                 cursor_captured = !cursor_captured;
                 capture_cursor(window, cursor_captured);
-            },
-            InputAction::KeyPressed { key: VirtualKeyCode::B } => render_wireframe = !render_wireframe,
+            }
+            InputAction::KeyPressed {
+                key: VirtualKeyCode::B,
+            } => render_wireframe = !render_wireframe,
             _ => (),
         };
     }
