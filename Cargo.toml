@@ -17,3 +17,4 @@ cgmath = { version = "0.18.0", features = ["swizzle"] }
 # For working with minecraft data files
 fastanvil = "0.26.1"
 fastnbt = "2.4.3"
+array-init = "2.1.0"
