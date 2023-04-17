@@ -7,7 +7,7 @@ use glutin::event::VirtualKeyCode;
 use glutin::window::CursorGrabMode;
 use glutin::window::Window;
 
-use cgmath::{EuclideanSpace, Point3, Rad, Vector3};
+use cgmath::{EuclideanSpace, Point3, Vector3};
 
 mod imgui_wrapper;
 use imgui_wrapper::ImguiWrapper;
@@ -23,26 +23,27 @@ mod infrastructure;
 use infrastructure::input::{self, InputAction, InputConsumer};
 use infrastructure::render_fragment::{RenderFragment, RenderFragmentBuilder};
 use infrastructure::RenderState;
+use minecraft::get_minecraft_chunk_position;
 
 mod model;
+use model::discrete::World;
 
-const TITLE: &str = "dd-terrain";
+mod config;
+
 const VS_SOURCE: &str = include_str!("shaders/vs.glsl");
 const FS_SOURCE: &str = include_str!("shaders/fs.glsl");
-const FOVY: Rad<f32> = Rad(std::f32::consts::FRAC_PI_2);
-const Z_NEAR: f32 = 0.1;
-const Z_FAR: f32 = 50.;
 
 fn main() {
     let (event_loop, display) = create_window();
 
+    let world = World::new(config::SPAWN_POINT);
     let (vertex_buffer, indices) = geometry::cube_color_exclusive_vertex(&display);
     let instance_positions = {
-        let blocks = minecraft::get_chunk();
+        let blocks = world.get_block_data();
         glium::vertex::VertexBuffer::new(&display, &blocks).unwrap()
     };
 
-    let triangle_renderer = RenderFragmentBuilder::new()
+    let cube_fragment = RenderFragmentBuilder::new()
         .set_geometry(vertex_buffer, indices)
         .set_vertex_shader(VS_SOURCE)
         .set_fragment_shader(FS_SOURCE)
@@ -51,15 +52,15 @@ fn main() {
 
     let mut imgui_data = ImguiWrapper::new(&display);
     let dimensions = display.get_framebuffer_dimensions();
-    let aspect_ratio = dimensions.0 / dimensions.1;
+    let aspect_ratio = dimensions.0 as f32 / dimensions.1 as f32;
     let mut camera = Camera::new(
-        Point3::new(-2., 0., 4.),
+        config::SPAWN_POINT,
         Point3::origin(),
         Vector3::unit_y(),
-        FOVY,
+        config::FOVY,
         aspect_ratio as f32,
-        Z_NEAR,
-        Z_FAR,
+        config::Z_NEAR,
+        config::Z_FAR,
     );
 
     let mut render_state = RenderState::new();
@@ -99,7 +100,7 @@ fn main() {
 
             // Draw Scene
             render_world(
-                &triangle_renderer,
+                &cube_fragment,
                 &mut target,
                 &instance_positions,
                 &camera,
@@ -174,24 +175,7 @@ fn get_imgui_builder(state: &RenderState, camera: &Camera) -> impl FnOnce(&imgui
     let direction = camera.get_direction();
     let fps = state.timing.fps();
     let is_cursor_captured = state.cursor_captured;
-
-    // negative regions are indexed shifted by 1 to differentiate between positive and negative
-    // zeros
-    let (region_x, region_z): (i32, i32) = {
-        let mut bias: i32 = if position.x < 0.0 { -1 } else { 0 };
-        let x = (position.x / (32.0 * 16.0)) as i32 + bias;
-
-        bias = if position.z < 0.0 { -1 } else { 0 };
-        let y = (position.z / (32.0 * 16.0)) as i32 + bias;
-
-        (x, y)
-    };
-    let (chunk_x, chunk_z): (u32, u32) = {
-        let x_within_region = ((position.x / 16.0).abs() as u32) % 32;
-        let z_within_region = ((position.z / 16.0).abs() as u32) % 32;
-
-        (x_within_region, z_within_region)
-    };
+    let chunk_position = get_minecraft_chunk_position(position);
 
     let builder = move |ui: &imgui::Ui| {
         ui.window("stats")
@@ -210,8 +194,14 @@ fn get_imgui_builder(state: &RenderState, camera: &Camera) -> impl FnOnce(&imgui
                 ));
 
                 ui.separator();
-                ui.text(format!("region: [{}, {}]", region_x, region_z));
-                ui.text(format!("chunk: [{}, {}]", chunk_x, chunk_z));
+                ui.text(format!(
+                    "region: [{}, {}]",
+                    chunk_position.region_x, chunk_position.region_z
+                ));
+                ui.text(format!(
+                    "chunk: [{}, {}]",
+                    chunk_position.chunk_x, chunk_position.chunk_z
+                ));
             });
     };
 
@@ -271,7 +261,7 @@ fn create_window() -> (EventLoop<()>, glium::Display) {
         .with_vsync(true);
 
     let builder = glium::glutin::window::WindowBuilder::new()
-        .with_title(TITLE.to_owned())
+        .with_title(config::TITLE.to_owned())
         .with_inner_size(glium::glutin::dpi::LogicalSize::new(1024f64, 768f64));
     let display =
         glium::Display::new(builder, context, &event_loop).expect("Failed to initialize display");
