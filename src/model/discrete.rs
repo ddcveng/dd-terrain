@@ -1,9 +1,11 @@
 use crate::config;
+use crate::config::WORLD_SIZE;
 use crate::get_minecraft_chunk_position;
 use crate::minecraft;
 use array_init::array_init;
 use cgmath::Point3;
 use glium::implement_vertex;
+use itertools;
 
 // TODO: is 1 byte for block type enough?
 #[derive(Clone, Copy)]
@@ -78,7 +80,7 @@ fn get_block_color(block_type: BlockType) -> [f32; 3] {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ChunkPosition {
     pub region_x: i32,
     pub region_z: i32,
@@ -141,7 +143,7 @@ impl ChunkPosition {
 // A chunks is a 16*y*16 region of blocks
 pub struct Chunk {
     // A column major grid of towers
-    data: [[MaterialTower; 16]; 16],
+    data: [[MaterialTower; minecraft::BLOCKS_IN_CHUNK]; minecraft::BLOCKS_IN_CHUNK],
     position: ChunkPosition,
 }
 
@@ -166,16 +168,17 @@ impl Chunk {
 
     pub fn get_block_data(&self) -> Vec<BlockData> {
         let mut blocks = Vec::<BlockData>::new();
+        let (chunk_global_x, chunk_global_z) = self.position.get_global_position_in_chunks();
+        let global_offset_blocks_x = chunk_global_x * (minecraft::BLOCKS_IN_CHUNK as i32);
+        let global_offset_blocks_z = chunk_global_z * (minecraft::BLOCKS_IN_CHUNK as i32);
 
         let mut x = 0;
-        for row in &self.data {
+        for col in &self.data {
             let mut z = 0;
-            for tower in row {
+            for tower in col {
                 for segment in &tower.data {
-                    let (x_offset_chunks, z_offset_chunks) =
-                        self.position.get_global_position_in_chunks();
-                    let x_offset_blocks = x_offset_chunks * (minecraft::BLOCKS_IN_CHUNK as i32) + x;
-                    let z_offset_blocks = z_offset_chunks * (minecraft::BLOCKS_IN_CHUNK as i32) + z;
+                    let x_offset_blocks = global_offset_blocks_x + x;
+                    let z_offset_blocks = global_offset_blocks_z + z;
                     let block_data = BlockData {
                         offset: [
                             x_offset_blocks as f32,
@@ -199,7 +202,9 @@ impl Chunk {
 }
 
 pub struct World {
-    chunks: [[Chunk; config::WORLD_SIZE]; config::WORLD_SIZE],
+    chunks: [Chunk; WORLD_SIZE * WORLD_SIZE],
+    //chunks: [[Chunk; config::WORLD_SIZE]; config::WORLD_SIZE],
+    center: ChunkPosition,
     // Init world around a position
     // calculate region and chunk from position
     // this is the position of the CENTER chunk in the world grid
@@ -209,6 +214,63 @@ pub struct World {
     //
     // each frame update the world grid with new chunks if the center chunk changes
     // - only part of the chunks need to be updated
+}
+
+fn get_difference_1d(region: i32, chunk: usize, new_region: i32, new_chunk: usize) -> i32 {
+    if region == new_region {
+        if chunk == new_chunk {
+            return 0;
+        }
+
+        if chunk > new_chunk {
+            return -1;
+        }
+
+        return 1;
+    }
+
+    if region > new_region {
+        return -1;
+    }
+
+    return 1;
+}
+
+fn get_difference(original: &ChunkPosition, different: &ChunkPosition) -> (i32, i32) {
+    let diff_x = get_difference_1d(
+        original.region_x,
+        original.chunk_x,
+        different.region_x,
+        different.chunk_x,
+    );
+    let diff_z = get_difference_1d(
+        original.region_z,
+        original.chunk_z,
+        different.region_z,
+        different.chunk_z,
+    );
+
+    (diff_x, diff_z)
+}
+
+fn clamp_chunk_index(i: i32) -> Option<usize> {
+    if i >= 0 && (i as usize) < config::WORLD_SIZE {
+        return Some(i as usize);
+    }
+
+    None
+}
+
+fn get_iterator(
+    from: usize,
+    to: usize,
+    reverse: bool,
+) -> itertools::Either<impl Iterator<Item = usize>, impl Iterator<Item = usize>> {
+    if reverse {
+        itertools::Either::Left((from..to).rev())
+    } else {
+        itertools::Either::Right(from..to)
+    }
 }
 
 const OFFSET_FROM_CENTER: usize = config::WORLD_SIZE / 2;
@@ -222,13 +284,21 @@ impl World {
         //println!("base chunk position: {:?}", base_chunk_position);
 
         World {
-            chunks: array_init(|offset_x| {
-                array_init(|offset_z| {
-                    let chunk_position =
-                        base_chunk_position.offset(offset_x as i32, offset_z as i32);
-                    minecraft::get_chunk(chunk_position)
-                })
+            chunks: array_init(|index| {
+                let x = index % config::WORLD_SIZE;
+                let z = index / config::WORLD_SIZE;
+                let chunk_position = base_chunk_position.offset(x as i32, z as i32);
+
+                minecraft::get_chunk(chunk_position)
             }),
+            //            chunks: array_init(|offset_x| {
+            //                array_init(|offset_z| {
+            //                    let chunk_position =
+            //                        base_chunk_position.offset(offset_x as i32, offset_z as i32);
+            //                    minecraft::get_chunk(chunk_position)
+            //                })
+            //            }),
+            center: center_chunk_position,
         }
     }
 
@@ -237,14 +307,87 @@ impl World {
 
         // TODO: move by 16 * chunk offset
         // chunk offset ranges from -OFFSETFROMCENTER to OFFSETFROMCENTER
-        for col in &self.chunks {
-            for chunk in col {
-                //println!("CHUNK OFFSET: {} {}", offset_x, offset_z);
-                let mut chunk_blocks = chunk.get_block_data();
-                blocks.append(&mut chunk_blocks);
+        for (i, chunk) in self.chunks.iter().enumerate() {
+            //println!("CHUNK OFFSET: {} {}", offset_x, offset_z);
+            let mut chunk_blocks = chunk.get_block_data();
+            if i >= 4 * WORLD_SIZE {
+                println!(
+                    "BLOCKS IN CHUNK {}; OFFSET {:?}",
+                    chunk_blocks.len(),
+                    chunk.position
+                );
             }
+
+            blocks.append(&mut chunk_blocks);
         }
 
         blocks
+    }
+
+    pub fn update(&mut self, new_position: Point3<f32>) -> bool {
+        let new_center_chunk = get_minecraft_chunk_position(new_position);
+        if self.center == new_center_chunk {
+            return false;
+        }
+
+        println!(
+            "old center: {:?} new center: {:?}",
+            self.center, new_center_chunk
+        );
+        // Get the direction of change
+        let (diff_x, diff_z) = get_difference(&self.center, &new_center_chunk);
+        self.center = new_center_chunk;
+        println!("CHUNK DIFF: {} {}", diff_x, diff_z);
+
+        // TODO: need to find out the relationship between world grid x,z and chunk x,z, it should
+        // work the same. also index of block in chunk should work the same
+        // Update the world matrix by either shifting chunks based on the direction, or loading
+        // needed chunks
+        let reverse_x = diff_x < 0;
+        let reverse_z = diff_z < 0;
+
+        // last_z should start as first value from iterator, which can be either 0 oir WORLD_SIZE
+        let mut last_z = 0;
+        for z in get_iterator(0, WORLD_SIZE, reverse_z) {
+            let mut last_x = 0;
+            for x in get_iterator(0, WORLD_SIZE, reverse_x) {
+                //println!("EVALUATING CELL {} {}", x, z);
+                let next_x = x as i32 + diff_x;
+                let next_z = z as i32 + diff_z;
+                if let Some(next_x) = clamp_chunk_index(next_x) {
+                    if let Some(next_z) = clamp_chunk_index(next_z) {
+                        let current_index = z * config::WORLD_SIZE + x;
+                        let next_index = next_z * config::WORLD_SIZE + next_x;
+
+                        //println!("SWAPPING CHUNKS {}<>{}", current_index, next_index);
+                        self.chunks.swap(current_index, next_index);
+                        continue;
+                    }
+                }
+
+                let current_position = &self.chunks[last_z * config::WORLD_SIZE + last_x].position;
+                let position_to_load = current_position.offset(diff_x, diff_z);
+                println!(
+                    "LOADING NEW CHUNK {:?} as ARRAY ELEMENT {}",
+                    position_to_load,
+                    z * WORLD_SIZE + x
+                );
+                println!("ORIGINAL CHUNK POSITION {:?}", current_position);
+
+                let new_chunk = minecraft::get_chunk(position_to_load);
+                //println!("NEW CHUNK POSITION {:?}", new_chunk.position);
+                self.chunks[z * config::WORLD_SIZE + x] = new_chunk;
+                last_x = x;
+            }
+            last_z = z;
+        }
+
+        for (i, chunk) in self.chunks.iter().enumerate() {
+            let x = i % WORLD_SIZE;
+            let z = i / WORLD_SIZE;
+            println!("[{}, {}] - {:?}", x, z, chunk.position);
+        }
+
+        return true;
     }
 }

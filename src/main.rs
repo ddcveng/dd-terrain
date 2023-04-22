@@ -36,9 +36,9 @@ const FS_SOURCE: &str = include_str!("shaders/fs.glsl");
 fn main() {
     let (event_loop, display) = create_window();
 
-    let world = World::new(config::SPAWN_POINT);
+    let mut world = World::new(config::SPAWN_POINT);
     let (vertex_buffer, indices) = geometry::cube_color_exclusive_vertex(&display);
-    let instance_positions = {
+    let mut instance_positions = {
         let blocks = world.get_block_data();
         glium::vertex::VertexBuffer::new(&display, &blocks).unwrap()
     };
@@ -86,6 +86,13 @@ fn main() {
             }
 
             camera.update(render_state.timing.delta_time.as_secs_f32());
+            let update_geometry = world.update(camera.get_position());
+            if update_geometry {
+                instance_positions = {
+                    let blocks = world.get_block_data();
+                    glium::vertex::VertexBuffer::new(&display, &blocks).unwrap()
+                };
+            }
 
             gl_window.window().request_redraw();
         }
