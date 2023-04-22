@@ -102,8 +102,9 @@ impl Camera {
         return Point3::from_homogeneous(self.view_to_world.w);
     }
 
+    // TODO: is this '-' here ok, or is my matrix wrong?
     pub fn get_direction(&self) -> Vector3<f32> {
-        return self.view_to_world.z.truncate();
+        return -self.view_to_world.z.truncate();
     }
 
     fn update_aspect(&mut self, aspect_ratio: f32) {
