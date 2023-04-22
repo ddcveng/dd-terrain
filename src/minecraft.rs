@@ -22,15 +22,28 @@ pub const BLOCKS_IN_CHUNK: usize = 16;
 
 pub fn get_chunk(chunk_position: ChunkPosition) -> Chunk {
     let region_file_path = build_region_filepath(chunk_position.region_x, chunk_position.region_z);
+    //println!("loading chunk from region file: {}", region_file_path);
     let file = std::fs::File::open(region_file_path).unwrap();
 
-    let mut region = Region::from_stream(file).unwrap();
-    let data = region
-        .read_chunk(chunk_position.chunk_x, chunk_position.chunk_z)
-        .unwrap()
-        .unwrap();
-
     let mut dd_chunk = Chunk::new(chunk_position);
+    let mut region = Region::from_stream(file).unwrap();
+    let data = match region.read_chunk(chunk_position.chunk_x, chunk_position.chunk_z) {
+        Ok(opt_data) => match opt_data {
+            Some(chunk_data) => chunk_data,
+            None => {
+                println!(
+                    "INFO: chunk at position {:?} was not yet generated",
+                    chunk_position
+                );
+                return dd_chunk;
+            }
+        },
+        Err(e) => {
+            eprintln!("Failed to load chunk data from region - {}", e);
+            return dd_chunk;
+        }
+    };
+
     let chunk: CurrentJavaChunk = from_bytes(data.as_slice()).unwrap();
     if let Some(tower) = chunk.sections {
         // TODO: "since 1.17 depth of  worlds can be customized" - is this relevant?
@@ -56,7 +69,6 @@ pub fn get_chunk(chunk_position: ChunkPosition) -> Chunk {
                     BlockType::Unknown => {
                         // TODO: this is bad
                         if BLOCK_BLACKLIST.contains(&block.name()) {
-                            println!("blocked");
                             continue;
                         }
                     }
