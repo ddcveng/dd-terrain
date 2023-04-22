@@ -18,3 +18,4 @@ cgmath = { version = "0.18.0", features = ["swizzle"] }
 fastanvil = "0.26.1"
 fastnbt = "2.4.3"
 array-init = "2.1.0"
+itertools = "0.10.5"
