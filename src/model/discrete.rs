@@ -11,7 +11,7 @@ use glium::implement_vertex;
 use itertools;
 
 // TODO: is 1 byte for block type enough?
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum BlockType {
     Air = 0,
     Dirt = 1,
@@ -32,15 +32,19 @@ pub struct BlockData {
 implement_vertex!(BlockData, offset, instance_color, height);
 
 #[derive(Clone, Copy)]
-struct MaterialStack {
+struct MaterialLayer {
     material: BlockType,
     height: u32,
     base_height: isize,
 }
 
 // TODO: limit tower height to whatever minecraft allows
+// Stores continuous layers of blocks,
+// there can be gaps of air between layers, these are not stored.
+//
+// Block layers are ordered from lowest to highest y coordinate
 struct MaterialTower {
-    pub data: Vec<MaterialStack>,
+    pub data: Vec<MaterialLayer>,
 }
 
 impl MaterialTower {
@@ -48,23 +52,29 @@ impl MaterialTower {
         MaterialTower { data: Vec::new() }
     }
 
-    pub fn get_block_at_y(&self, y: u32) -> BlockType {
-        let mut h: u32 = 0;
-        for stack in &self.data {
-            h += stack.height;
-            if h > y {
-                return stack.material;
-            }
+    pub fn get_block_at_y(&self, y: isize) -> BlockType {
+        let layer = self.data.iter().find(|layer| {
+            y >= layer.base_height && ((y - layer.base_height) as u32) < layer.height
+        });
+
+        if let Some(layer) = layer {
+            return layer.material;
         }
 
         // If there is no block recorded at this height, assume its air
-        // note that Air blocks can be recorded in the stack so the loop above can also return Air
         return BlockType::Air;
     }
 
     pub fn push(&mut self, block: BlockType, base_height: isize) {
+        // We do not want to store Air blocks for now
+        debug_assert!(block != BlockType::Air);
+
         let extend_top_layer = match self.data.last() {
-            Some(layer) => layer.material == block,
+            Some(layer) => {
+                // Extend the layer if materials match and there is no air gap between the layers
+                layer.material == block
+                    && (layer.base_height + layer.height as isize) == base_height
+            }
             None => false,
         };
 
@@ -78,7 +88,7 @@ impl MaterialTower {
             return;
         }
 
-        let segment = MaterialStack {
+        let segment = MaterialLayer {
             material: block,
             height: 1,
             base_height,
@@ -93,6 +103,7 @@ fn get_block_color(block_type: BlockType) -> [f32; 3] {
         BlockType::Grass => [0.09, 0.4, 0.05],
         BlockType::Dirt => [0.36, 0.09, 0.05],
         BlockType::Stone => [0.6, 0.6, 0.6],
+        BlockType::Sand => [0.76, 0.69, 0.5],
         _ => [1.0, 0.0, 0.0],
     }
 }
@@ -157,6 +168,21 @@ impl ChunkPosition {
     }
 }
 
+fn get_block_coord(world_coord: f32) -> usize {
+    let negative = world_coord < 0.0;
+
+    let coord_positive = if negative { -world_coord } else { world_coord };
+
+    // coord x.yy is still within the block at x -> floor coord_positive
+    let block_coord = coord_positive as usize % minecraft::BLOCKS_IN_CHUNK;
+
+    if negative {
+        minecraft::BLOCKS_IN_CHUNK - block_coord - 1
+    } else {
+        block_coord
+    }
+}
+
 // A chunks is a 16*y*16 region of blocks
 pub struct Chunk {
     // A column major grid of towers
@@ -208,6 +234,19 @@ impl Chunk {
         }
 
         blocks
+    }
+
+    pub fn get_block_coords(x: f32, z: f32) -> (usize, usize) {
+        let block_x = get_block_coord(x);
+        let block_z = get_block_coord(z);
+
+        (block_x, block_z)
+    }
+
+    pub fn get_block(&self, x: usize, y: isize, z: usize) -> BlockType {
+        let tower = &self.data[x][z];
+
+        tower.get_block_at_y(y)
     }
 
     // TODO: set block? will be a litte complicated since we need to insert a new material stack or
@@ -290,11 +329,10 @@ const OFFSET_FROM_CENTER: usize = config::WORLD_SIZE / 2;
 impl World {
     pub fn new(position: Point3<f32>) -> Self {
         let center_chunk_position = get_minecraft_chunk_position(position);
-        //println!("center chunk position: {:?}", center_chunk_position);
+
         // Get position of chunk that corresponds to 0,0 in the world grid
         let base_chunk_position = center_chunk_position
             .offset(-(OFFSET_FROM_CENTER as i32), -(OFFSET_FROM_CENTER as i32));
-        //println!("base chunk position: {:?}", base_chunk_position);
 
         World {
             chunks: array_init(|index| {
@@ -304,13 +342,6 @@ impl World {
 
                 minecraft::get_chunk(chunk_position)
             }),
-            //            chunks: array_init(|offset_x| {
-            //                array_init(|offset_z| {
-            //                    let chunk_position =
-            //                        base_chunk_position.offset(offset_x as i32, offset_z as i32);
-            //                    minecraft::get_chunk(chunk_position)
-            //                })
-            //            }),
             center: center_chunk_position,
         }
     }
@@ -318,19 +349,8 @@ impl World {
     pub fn get_block_data(&self) -> Vec<BlockData> {
         let mut blocks = Vec::<BlockData>::new();
 
-        // TODO: move by 16 * chunk offset
-        // chunk offset ranges from -OFFSETFROMCENTER to OFFSETFROMCENTER
-        for (i, chunk) in self.chunks.iter().enumerate() {
-            //println!("CHUNK OFFSET: {} {}", offset_x, offset_z);
+        for chunk in &self.chunks {
             let mut chunk_blocks = chunk.get_block_data();
-            if i >= 4 * WORLD_SIZE {
-                println!(
-                    "BLOCKS IN CHUNK {}; OFFSET {:?}",
-                    chunk_blocks.len(),
-                    chunk.position
-                );
-            }
-
             blocks.append(&mut chunk_blocks);
         }
 
@@ -343,17 +363,10 @@ impl World {
             return false;
         }
 
-        println!(
-            "old center: {:?} new center: {:?}",
-            self.center, new_center_chunk
-        );
         // Get the direction of change
         let (direction_x, direction_z) = get_difference(&self.center, &new_center_chunk);
         self.center = new_center_chunk;
-        println!("CHUNK DIFF: {} {}", direction_x, direction_z);
 
-        // TODO: need to find out the relationship between world grid x,z and chunk x,z, it should
-        // work the same. also index of block in chunk should work the same
         // Update the world matrix by either shifting chunks based on the direction, or loading
         // needed chunks
         let reverse_x = direction_x < 0;
@@ -361,7 +374,6 @@ impl World {
 
         for z in get_iterator(0, WORLD_SIZE, reverse_z) {
             for x in get_iterator(0, WORLD_SIZE, reverse_x) {
-                //println!("EVALUATING CELL {} {}", x, z);
                 let next_x = x as i32 + direction_x;
                 let next_z = z as i32 + direction_z;
                 if let Some(next_x) = clamp_chunk_index(next_x) {
@@ -369,7 +381,6 @@ impl World {
                         let current_index = z * config::WORLD_SIZE + x;
                         let next_index = next_z * config::WORLD_SIZE + next_x;
 
-                        //println!("SWAPPING CHUNKS {}<>{}", current_index, next_index);
                         self.chunks.swap(current_index, next_index);
                         continue;
                     }
@@ -382,27 +393,27 @@ impl World {
                 let current_position =
                     &self.chunks[original_z * config::WORLD_SIZE + original_x].position;
                 let position_to_load = current_position.offset(direction_x, direction_z);
-                println!(
-                    "LOADING NEW CHUNK {:?} as ARRAY ELEMENT {}",
-                    position_to_load,
-                    z * WORLD_SIZE + x
-                );
-                println!("ORIGINAL CHUNK POSITION {:?}", current_position);
 
                 let new_chunk = minecraft::get_chunk(position_to_load);
-                //println!("NEW CHUNK POSITION {:?}", new_chunk.position);
                 self.chunks[z * config::WORLD_SIZE + x] = new_chunk;
-                //last_x = x;
             }
-            //last_z = z;
-        }
-
-        for (i, chunk) in self.chunks.iter().enumerate() {
-            let x = i % WORLD_SIZE;
-            let z = i / WORLD_SIZE;
-            println!("[{}, {}] - {:?}", x, z, chunk.position);
         }
 
         return true;
+    }
+
+    pub fn get_block(&self, position: Point3<f32>) -> Option<BlockType> {
+        let chunk_position = get_minecraft_chunk_position(position);
+        let chunk = self
+            .chunks
+            .iter()
+            .find(|chunk| chunk.position == chunk_position);
+
+        let Some(chunk) = chunk else {
+            return None
+        };
+
+        let (block_x, block_z) = Chunk::get_block_coords(position.x, position.z);
+        Some(chunk.get_block(block_x, position.y as isize, block_z))
     }
 }

@@ -20,8 +20,11 @@ void main() {
     frag_color = instance_color;
     v_normal = normal;
 
+    // We start with a block that has 0,0,0 in its center
+    // We want 0,0,0 to be one of its corners so we offset x and z by cube_size / 2
+    // y is scaled by height, so we have to offset it by height * cube_size / 2
     float additional_offset_y = height / 2.0;
-    vec4 scale_offset = vec4(offset.x, offset.y + additional_offset_y, offset.z, 1.0);
+    vec4 scale_offset = vec4(offset.x + 0.5, offset.y + additional_offset_y, offset.z + 0.5, 1.0);
 
     mat4 scale;
     scale[0] = vec4(1.0, 0.0, 0.0, 0.0);
