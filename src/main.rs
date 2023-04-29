@@ -1,13 +1,13 @@
 use glium::glutin::event::{Event, WindowEvent};
 use glium::glutin::event_loop::{ControlFlow, EventLoop};
 use glium::index::IndicesSource;
-use glium::{uniform, Surface, Frame, VertexBuffer};
+use glium::{uniform, Frame, Surface, VertexBuffer};
 
 use glutin::event::VirtualKeyCode;
-use glutin::window::Window;
 use glutin::window::CursorGrabMode;
+use glutin::window::Window;
 
-use cgmath::{Rad, Point3, Vector3, EuclideanSpace};
+use cgmath::{EuclideanSpace, Point3, Vector3};
 
 mod imgui_wrapper;
 use imgui_wrapper::ImguiWrapper;
@@ -20,27 +20,30 @@ use camera::Camera;
 mod geometry;
 
 mod infrastructure;
-use infrastructure::input::{InputAction, self, InputConsumer};
-use infrastructure::render_fragment::{RenderFragmentBuilder, RenderFragment};
+use infrastructure::input::{self, InputAction, InputConsumer};
+use infrastructure::render_fragment::{RenderFragment, RenderFragmentBuilder};
 use infrastructure::RenderState;
+use minecraft::get_minecraft_chunk_position;
 
-const TITLE: &str = "dd-terrain";
+mod model;
+use model::discrete::World;
+
+mod config;
+
 const VS_SOURCE: &str = include_str!("shaders/vs.glsl");
 const FS_SOURCE: &str = include_str!("shaders/fs.glsl");
-const FOVY: Rad<f32> = Rad(std::f32::consts::FRAC_PI_2);
-const Z_NEAR: f32 = 0.1;
-const Z_FAR: f32 = 10.;
 
 fn main() {
     let (event_loop, display) = create_window();
 
+    let mut world = World::new(config::SPAWN_POINT);
     let (vertex_buffer, indices) = geometry::cube_color_exclusive_vertex(&display);
-    let instance_positions = {
-        let blocks = minecraft::get_chunk();
+    let mut instance_positions = {
+        let blocks = world.get_block_data();
         glium::vertex::VertexBuffer::new(&display, &blocks).unwrap()
     };
 
-    let triangle_renderer = RenderFragmentBuilder::new()
+    let cube_fragment = RenderFragmentBuilder::new()
         .set_geometry(vertex_buffer, indices)
         .set_vertex_shader(VS_SOURCE)
         .set_fragment_shader(FS_SOURCE)
@@ -49,15 +52,15 @@ fn main() {
 
     let mut imgui_data = ImguiWrapper::new(&display);
     let dimensions = display.get_framebuffer_dimensions();
-    let aspect_ratio = dimensions.0 / dimensions.1;
+    let aspect_ratio = dimensions.0 as f32 / dimensions.1 as f32;
     let mut camera = Camera::new(
-        Point3::new(-2., 0., 4.),
+        config::SPAWN_POINT,
         Point3::origin(),
         Vector3::unit_y(),
-        FOVY,
+        config::FOVY,
         aspect_ratio as f32,
-        Z_NEAR,
-        Z_FAR,
+        config::Z_NEAR,
+        config::Z_FAR,
     );
 
     let mut render_state = RenderState::new();
@@ -83,6 +86,13 @@ fn main() {
             }
 
             camera.update(render_state.timing.delta_time.as_secs_f32());
+            let update_geometry = world.update(camera.get_position());
+            if update_geometry {
+                instance_positions = {
+                    let blocks = world.get_block_data();
+                    glium::vertex::VertexBuffer::new(&display, &blocks).unwrap()
+                };
+            }
 
             gl_window.window().request_redraw();
         }
@@ -96,10 +106,16 @@ fn main() {
             target.clear_depth(1.0);
 
             // Draw Scene
-            render_world(&triangle_renderer, &mut target, &instance_positions, &camera, &render_state);
+            render_world(
+                &cube_fragment,
+                &mut target,
+                &instance_positions,
+                &camera,
+                &render_state,
+            );
 
             // Draw imgui last so it shows on top of everything
-            let imgui_frame_builder = get_imgui_builder(&render_state, &camera);
+            let imgui_frame_builder = get_imgui_builder(&render_state, &camera, &world);
             imgui_data.render(gl_window.window(), &mut target, imgui_frame_builder);
             //imgui_data.render(gl_window.window(), &mut target);
 
@@ -128,12 +144,13 @@ fn render_world<'a, D, T, I>(
     camera: &Camera,
     state: &RenderState,
 ) -> ()
-    where D: Copy,
+where
+    D: Copy,
     T: Copy,
     I: 'a,
     IndicesSource<'a>: From<&'a I>,
 {
-    let model: [[f32; 4]; 4] = cgmath::Matrix4::from_scale(0.3).into();
+    let model: [[f32; 4]; 4] = cgmath::Matrix4::from_scale(1.0).into();
     let projection: [[f32; 4]; 4] = camera.projection.into();
     let view: [[f32; 4]; 4] = camera.world_to_view.into();
     let uni = uniform! {
@@ -141,30 +158,39 @@ fn render_world<'a, D, T, I>(
         view: view,
         model: model,
     };
-    
+
     let polygon_mode = match state.render_wireframe {
         true => glium::PolygonMode::Line,
         false => glium::PolygonMode::Fill,
     };
     let draw_parameters = glium::DrawParameters {
-            backface_culling: glium::BackfaceCullingMode::CullClockwise,
-            polygon_mode,
-            depth: glium::Depth {
-                test: glium::DepthTest::IfLess,
-                write: true, 
-                ..Default::default()
-            },
+        backface_culling: glium::BackfaceCullingMode::CullClockwise,
+        polygon_mode,
+        depth: glium::Depth {
+            test: glium::DepthTest::IfLess,
+            write: true,
             ..Default::default()
-        };
+        },
+        ..Default::default()
+    };
 
     fragment.render_instanced(target, &uni, &instance_data, Some(draw_parameters));
 }
 
-fn get_imgui_builder(state: &RenderState, camera: &Camera) -> impl FnOnce(&imgui::Ui) {
+fn get_imgui_builder(
+    state: &RenderState,
+    camera: &Camera,
+    world: &World,
+) -> impl FnOnce(&imgui::Ui) {
     let position = camera.get_position();
     let direction = camera.get_direction();
     let fps = state.timing.fps();
     let is_cursor_captured = state.cursor_captured;
+    let chunk_position = get_minecraft_chunk_position(position);
+    let block_at_position = match world.get_block(position) {
+        Some(block) => block,
+        None => model::discrete::BlockType::Air,
+    };
 
     let builder = move |ui: &imgui::Ui| {
         ui.window("stats")
@@ -173,15 +199,36 @@ fn get_imgui_builder(state: &RenderState, camera: &Camera) -> impl FnOnce(&imgui
                 ui.text(format!("fps: {:.2}", fps));
                 ui.text(format!("cursor captured: {}", is_cursor_captured));
                 ui.separator();
-                ui.text(format!("position: x: {:.2} y: {:.2} z: {:.2}", position.x, position.y, position.z));
-                ui.text(format!("direction: x: {:.2} y: {:.2} z: {:.2}", direction.x, direction.y, direction.z));
+                ui.text(format!(
+                    "position: x: {:.2} y: {:.2} z: {:.2}",
+                    position.x, position.y, position.z
+                ));
+                ui.text(format!(
+                    "direction: x: {:.2} y: {:.2} z: {:.2}",
+                    direction.x, direction.y, direction.z
+                ));
+
+                ui.separator();
+                ui.text(format!(
+                    "region: [{}, {}]",
+                    chunk_position.region_x, chunk_position.region_z
+                ));
+                ui.text(format!(
+                    "chunk: [{}, {}]",
+                    chunk_position.chunk_x, chunk_position.chunk_z
+                ));
+                ui.text(format!("block: {:?}", block_at_position));
             });
     };
 
     builder
 }
 
-fn create_state(events: &Vec<InputAction>, old_state: RenderState, window: &Window) -> Option<RenderState> {
+fn create_state(
+    events: &Vec<InputAction>,
+    old_state: RenderState,
+    window: &Window,
+) -> Option<RenderState> {
     let mut cursor_captured = old_state.cursor_captured;
     let mut should_render = true;
     let mut render_wireframe = old_state.render_wireframe;
@@ -192,8 +239,10 @@ fn create_state(events: &Vec<InputAction>, old_state: RenderState, window: &Wind
             InputAction::Capture => {
                 cursor_captured = !cursor_captured;
                 capture_cursor(window, cursor_captured);
-            },
-            InputAction::KeyPressed { key: VirtualKeyCode::B } => render_wireframe = !render_wireframe,
+            }
+            InputAction::KeyPressed {
+                key: VirtualKeyCode::B,
+            } => render_wireframe = !render_wireframe,
             _ => (),
         };
     }
@@ -228,7 +277,7 @@ fn create_window() -> (EventLoop<()>, glium::Display) {
         .with_vsync(true);
 
     let builder = glium::glutin::window::WindowBuilder::new()
-        .with_title(TITLE.to_owned())
+        .with_title(config::TITLE.to_owned())
         .with_inner_size(glium::glutin::dpi::LogicalSize::new(1024f64, 768f64));
     let display =
         glium::Display::new(builder, context, &event_loop).expect("Failed to initialize display");

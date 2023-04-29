@@ -1,11 +1,7 @@
-use crate::{input::Direction, InputAction, InputConsumer, RenderState};
+use crate::{config, input::Direction, InputAction, InputConsumer, RenderState};
 use cgmath::{
     perspective, Angle, InnerSpace, Matrix4, Point3, Rad, SquareMatrix, Vector2, Vector3,
 };
-
-const CAMERA_MOVE_SPEED: f32 = 2.0;
-const SENSITIVITY: f32 = 0.004;
-const SPHERE_RADIUS: f32 = 5.0;
 
 pub struct Camera {
     pub world_to_view: Matrix4<f32>,
@@ -53,8 +49,8 @@ impl Camera {
         let mut pitch: Rad<f32> = Angle::asin(direction.y);
 
         if let Some(rotation) = self.rotation {
-            yaw += Rad(rotation.x * SENSITIVITY);
-            pitch += Rad(rotation.y * SENSITIVITY);
+            yaw += Rad(rotation.x * config::SENSITIVITY);
+            pitch += Rad(rotation.y * config::SENSITIVITY);
 
             // TODO: avoid singularities
 
@@ -106,8 +102,9 @@ impl Camera {
         return Point3::from_homogeneous(self.view_to_world.w);
     }
 
+    // TODO: is this '-' here ok, or is my matrix wrong?
     pub fn get_direction(&self) -> Vector3<f32> {
-        return self.view_to_world.z.truncate();
+        return -self.view_to_world.z.truncate();
     }
 
     fn update_aspect(&mut self, aspect_ratio: f32) {
@@ -126,12 +123,12 @@ impl InputConsumer for Camera {
     fn consume(&mut self, action: &InputAction, state: &RenderState) -> () {
         match action {
             InputAction::BeginMove { dir } => match dir {
-                Direction::Forward => self.translation.z = -CAMERA_MOVE_SPEED,
-                Direction::Back => self.translation.z = CAMERA_MOVE_SPEED,
-                Direction::Left => self.translation.x = -CAMERA_MOVE_SPEED,
-                Direction::Right => self.translation.x = CAMERA_MOVE_SPEED,
-                Direction::Up => self.translation.y = CAMERA_MOVE_SPEED,
-                Direction::Down => self.translation.y = -CAMERA_MOVE_SPEED,
+                Direction::Forward => self.translation.z = -config::CAMERA_MOVE_SPEED,
+                Direction::Back => self.translation.z = config::CAMERA_MOVE_SPEED,
+                Direction::Left => self.translation.x = -config::CAMERA_MOVE_SPEED,
+                Direction::Right => self.translation.x = config::CAMERA_MOVE_SPEED,
+                Direction::Up => self.translation.y = config::CAMERA_MOVE_SPEED,
+                Direction::Down => self.translation.y = -config::CAMERA_MOVE_SPEED,
             },
             InputAction::EndMove { dir } => match dir {
                 Direction::Forward => self.translation.z = 0.0,
@@ -152,7 +149,8 @@ impl InputConsumer for Camera {
         }
 
         if let InputAction::CursorMoved { x, y } = action {
-            let rotation_direction = Vector2::new(*x as f32, *y as f32).normalize_to(SPHERE_RADIUS);
+            let rotation_direction =
+                Vector2::new(*x as f32, *y as f32).normalize_to(config::SPHERE_RADIUS);
 
             self.rotation = Some(rotation_direction);
         }
