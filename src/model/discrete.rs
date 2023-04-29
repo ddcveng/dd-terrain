@@ -1,3 +1,6 @@
+use std::cmp::max;
+use std::cmp::min;
+
 use crate::config;
 use crate::config::WORLD_SIZE;
 use crate::get_minecraft_chunk_position;
@@ -8,7 +11,7 @@ use glium::implement_vertex;
 use itertools;
 
 // TODO: is 1 byte for block type enough?
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum BlockType {
     Air = 0,
     Dirt = 1,
@@ -23,14 +26,15 @@ pub enum BlockType {
 pub struct BlockData {
     offset: [f32; 3],
     instance_color: [f32; 3],
+    height: u32,
     //block_type: u8,
 }
-implement_vertex!(BlockData, offset, instance_color);
+implement_vertex!(BlockData, offset, instance_color, height);
 
 #[derive(Clone, Copy)]
 struct MaterialStack {
     material: BlockType,
-    height: usize,
+    height: u32,
     base_height: isize,
 }
 
@@ -44,8 +48,8 @@ impl MaterialTower {
         MaterialTower { data: Vec::new() }
     }
 
-    pub fn get_block_at_y(&self, y: usize) -> BlockType {
-        let mut h: usize = 0;
+    pub fn get_block_at_y(&self, y: u32) -> BlockType {
+        let mut h: u32 = 0;
         for stack in &self.data {
             h += stack.height;
             if h > y {
@@ -59,8 +63,21 @@ impl MaterialTower {
     }
 
     pub fn push(&mut self, block: BlockType, base_height: isize) {
-        // TODO: if there is already a segment for the same block, just increase its height, do not
-        // add a new segment
+        let extend_top_layer = match self.data.last() {
+            Some(layer) => layer.material == block,
+            None => false,
+        };
+
+        if extend_top_layer {
+            // Should always be Some(..) if the check above passed
+            if let Some(top_layer) = self.data.last_mut() {
+                top_layer.height += 1;
+            } else {
+                println!("Something weird is going on..");
+            }
+            return;
+        }
+
         let segment = MaterialStack {
             material: block,
             height: 1,
@@ -155,11 +172,6 @@ impl Chunk {
         }
     }
 
-    pub fn get_block(&self, x: usize, y: usize, z: usize) -> BlockType {
-        let stack = &self.data[x][z];
-        stack.get_block_at_y(y)
-    }
-
     // Push block on top of the material tower at x, z
     pub fn push_block(&mut self, x: usize, z: usize, base_height: isize, block: BlockType) {
         let tower = &mut self.data[x][z];
@@ -186,6 +198,7 @@ impl Chunk {
                             z_offset_blocks as f32,
                         ],
                         instance_color: get_block_color(segment.material),
+                        height: segment.height,
                     };
                     blocks.push(block_data);
                 }
@@ -335,25 +348,22 @@ impl World {
             self.center, new_center_chunk
         );
         // Get the direction of change
-        let (diff_x, diff_z) = get_difference(&self.center, &new_center_chunk);
+        let (direction_x, direction_z) = get_difference(&self.center, &new_center_chunk);
         self.center = new_center_chunk;
-        println!("CHUNK DIFF: {} {}", diff_x, diff_z);
+        println!("CHUNK DIFF: {} {}", direction_x, direction_z);
 
         // TODO: need to find out the relationship between world grid x,z and chunk x,z, it should
         // work the same. also index of block in chunk should work the same
         // Update the world matrix by either shifting chunks based on the direction, or loading
         // needed chunks
-        let reverse_x = diff_x < 0;
-        let reverse_z = diff_z < 0;
+        let reverse_x = direction_x < 0;
+        let reverse_z = direction_z < 0;
 
-        // last_z should start as first value from iterator, which can be either 0 oir WORLD_SIZE
-        let mut last_z = 0;
         for z in get_iterator(0, WORLD_SIZE, reverse_z) {
-            let mut last_x = 0;
             for x in get_iterator(0, WORLD_SIZE, reverse_x) {
                 //println!("EVALUATING CELL {} {}", x, z);
-                let next_x = x as i32 + diff_x;
-                let next_z = z as i32 + diff_z;
+                let next_x = x as i32 + direction_x;
+                let next_z = z as i32 + direction_z;
                 if let Some(next_x) = clamp_chunk_index(next_x) {
                     if let Some(next_z) = clamp_chunk_index(next_z) {
                         let current_index = z * config::WORLD_SIZE + x;
@@ -365,8 +375,13 @@ impl World {
                     }
                 }
 
-                let current_position = &self.chunks[last_z * config::WORLD_SIZE + last_x].position;
-                let position_to_load = current_position.offset(diff_x, diff_z);
+                let original_x =
+                    min(max(x as i32 - direction_x, 0), WORLD_SIZE as i32 - 1) as usize;
+                let original_z =
+                    min(max(z as i32 - direction_z, 0), WORLD_SIZE as i32 - 1) as usize;
+                let current_position =
+                    &self.chunks[original_z * config::WORLD_SIZE + original_x].position;
+                let position_to_load = current_position.offset(direction_x, direction_z);
                 println!(
                     "LOADING NEW CHUNK {:?} as ARRAY ELEMENT {}",
                     position_to_load,
@@ -377,9 +392,9 @@ impl World {
                 let new_chunk = minecraft::get_chunk(position_to_load);
                 //println!("NEW CHUNK POSITION {:?}", new_chunk.position);
                 self.chunks[z * config::WORLD_SIZE + x] = new_chunk;
-                last_x = x;
+                //last_x = x;
             }
-            last_z = z;
+            //last_z = z;
         }
 
         for (i, chunk) in self.chunks.iter().enumerate() {
