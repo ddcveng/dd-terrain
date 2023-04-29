@@ -115,7 +115,7 @@ fn main() {
             );
 
             // Draw imgui last so it shows on top of everything
-            let imgui_frame_builder = get_imgui_builder(&render_state, &camera);
+            let imgui_frame_builder = get_imgui_builder(&render_state, &camera, &world);
             imgui_data.render(gl_window.window(), &mut target, imgui_frame_builder);
             //imgui_data.render(gl_window.window(), &mut target);
 
@@ -177,12 +177,20 @@ where
     fragment.render_instanced(target, &uni, &instance_data, Some(draw_parameters));
 }
 
-fn get_imgui_builder(state: &RenderState, camera: &Camera) -> impl FnOnce(&imgui::Ui) {
+fn get_imgui_builder(
+    state: &RenderState,
+    camera: &Camera,
+    world: &World,
+) -> impl FnOnce(&imgui::Ui) {
     let position = camera.get_position();
     let direction = camera.get_direction();
     let fps = state.timing.fps();
     let is_cursor_captured = state.cursor_captured;
     let chunk_position = get_minecraft_chunk_position(position);
+    let block_at_position = match world.get_block(position) {
+        Some(block) => block,
+        None => model::discrete::BlockType::Air,
+    };
 
     let builder = move |ui: &imgui::Ui| {
         ui.window("stats")
@@ -209,6 +217,7 @@ fn get_imgui_builder(state: &RenderState, camera: &Camera) -> impl FnOnce(&imgui
                     "chunk: [{}, {}]",
                     chunk_position.chunk_x, chunk_position.chunk_z
                 ));
+                ui.text(format!("block: {:?}", block_at_position));
             });
     };
 
