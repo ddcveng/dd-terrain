@@ -99,6 +99,7 @@ pub fn get_block_type(block_id: &str) -> BlockType {
         "minecraft:stone" => BlockType::Stone,
         "minecraft:grass_block" => BlockType::Grass,
         "minecraft:air" => BlockType::Air,
+        "minecraft:sand" => BlockType::Sand,
         _ => BlockType::Unknown,
     }
 }
