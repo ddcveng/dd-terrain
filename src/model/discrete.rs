@@ -307,64 +307,36 @@ impl Chunk {
         tower.get_block_at_y(y)
     }
 
-    // Kernel is the volume we are intersecting with
-    pub fn get_chunk_intersection_volume(&self, kernel: Kernel) -> f32 {
-        let chunk_position = self.position.get_global_position();
-        let left = chunk_position.x;
-        let right = left + CHUNK_SIZE;
-        let bottom = chunk_position.y;
-        let top = bottom + CHUNK_SIZE;
+    // Intersection is a rectangle local to the chunk - its origin is in chunk local coordinates
+    // and the whole rectangle fits inside the chunk
+    pub fn get_chunk_intersection_volume(
+        &self,
+        intersection_xz: Rectangle,
+        y_low: f32,
+        y_high: f32,
+    ) -> f32 {
+        let intersection_start_index_x = get_block_coord(intersection_xz.left());
+        let intersection_start_index_z = get_block_coord(intersection_xz.bottom());
 
-        let kernel_position_xz = kernel.get_topdown_bottom_left_position();
-        let kernel_left = kernel_position_xz.x;
-        let kernel_right = kernel_left + implicit::KERNEL_SIZE;
-        let kernel_bottom = kernel_position_xz.y;
-        let kernel_top = kernel_bottom + implicit::KERNEL_SIZE;
-
-        // intersection size in chunks
-        let intersection_size_x = (right.min(kernel_right) - left.max(kernel_left)).max(0.0);
-        let intersection_size_z = (top.min(kernel_top) - bottom.max(kernel_bottom)).max(0.0);
-
-        let no_intersection =
-            intersection_size_x.abs() < EPSILON || intersection_size_z.abs() < EPSILON;
-        if no_intersection {
-            return 0.0;
-        }
-
-        // bottom left corner of the intersection
-        let intersection_x = left.max(kernel_left);
-        let intersection_z = bottom.max(kernel_bottom);
-
-        // block index of bottom left corner of intersection
-        let intersection_start_index_x = get_block_coord(intersection_x);
-        let intersection_start_index_z = get_block_coord(intersection_z);
-
-        let x_end = min(
+        let intersection_end_index_x = min(
             minecraft::BLOCKS_IN_CHUNK,
-            (intersection_x + intersection_size_x).floor() as usize,
+            (intersection_xz.right() - EPSILON).ceil() as usize,
         );
-        let z_end = min(
+        let intersection_end_index_z = min(
             minecraft::BLOCKS_IN_CHUNK,
-            (intersection_z + intersection_size_z).floor() as usize,
+            (intersection_xz.top() - EPSILON).ceil() as usize,
         );
-
-        let y_low = kernel.y_low();
-        let y_high = kernel.y_high();
-        let intersection_x_local = intersection_x - chunk_position.x;
-        let intersection_z_local = intersection_z - chunk_position.y;
-        let intersection_x_local_end = intersection_x_local + intersection_size_x;
-        let intersection_z_local_end = intersection_z_local + intersection_size_z;
 
         let mut volume: f32 = 0.0;
         // Iterate over blocks that are intersected
-        for x in intersection_start_index_x..x_end {
-            for z in intersection_start_index_z..z_end {
+        for x in intersection_start_index_x..intersection_end_index_x {
+            for z in intersection_start_index_z..intersection_end_index_z {
                 let tower = &self.data[x][z];
                 let blocks = tower.get_layers_in_range(y_low, y_high);
                 let x_scale =
-                    get_block_portion_in_range(x, intersection_x_local, intersection_x_local_end);
+                    get_block_portion_in_range(x, intersection_xz.left(), intersection_xz.right());
                 let z_scale =
-                    get_block_portion_in_range(z, intersection_z_local, intersection_z_local_end);
+                    get_block_portion_in_range(z, intersection_xz.bottom(), intersection_xz.top());
 
                 for layer in blocks {
                     // let material = layer.0;
@@ -554,15 +526,21 @@ impl World {
 
     pub fn sample_volume(&self, kernel: Kernel) -> f32 {
         let kernel_box = kernel.get_bounding_rectangle();
+        let y_low = kernel.y_low();
+        let y_high = kernel.y_high();
+
         self.chunks
             .iter()
             .filter_map(|chunk| {
                 let chunk_box = chunk.get_bounding_rectangle();
-                let intersection = chunk_box.intersect(kernel_box) else {
-                return None;
-            };
+                let Some(intersection) = chunk_box.intersect(kernel_box) else {
+                    return None;
+                };
 
-                let chunk_volume: f32 = chunk.get_chunk_intersection_volume(intersection);
+                let offset = chunk.position.get_global_position().map(|coord| -coord);
+                let intersection_local = intersection.offset_origin(offset);
+                let chunk_volume: f32 =
+                    chunk.get_chunk_intersection_volume(intersection_local, y_low, y_high);
                 Some(chunk_volume)
             })
             .sum()
