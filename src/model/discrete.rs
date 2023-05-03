@@ -6,9 +6,14 @@ use crate::config::WORLD_SIZE;
 use crate::get_minecraft_chunk_position;
 use crate::minecraft;
 use array_init::array_init;
+use cgmath::Point2;
 use cgmath::Point3;
 use glium::implement_vertex;
 use itertools;
+
+use super::implicit;
+use super::implicit::Kernel;
+use super::rectangle::Rectangle;
 
 // TODO: is 1 byte for block type enough?
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -63,6 +68,22 @@ impl MaterialTower {
 
         // If there is no block recorded at this height, assume its air
         return BlockType::Air;
+    }
+
+    pub fn get_layers_in_range(&self, y_low: f32, y_high: f32) -> Vec<(BlockType, f32)> {
+        let layers_in_range = self.data.iter().filter_map(|layer| {
+            let layer_low = (layer.base_height as f32).max(y_low);
+            let layer_high = (layer.base_height as f32 + layer.height as f32).min(y_high);
+            let layer_in_range = layer_high > layer_low;
+            if !layer_in_range {
+                return None;
+            }
+
+            let new_height = layer_high - layer_low;
+            Some((layer.material, new_height))
+        });
+
+        return layers_in_range.collect();
     }
 
     pub fn push(&mut self, block: BlockType, base_height: isize) {
@@ -126,6 +147,14 @@ impl ChunkPosition {
         (global_x, global_z)
     }
 
+    pub fn get_global_position(&self) -> Point2<f32> {
+        let (chunk_x, chunk_z) = self.get_global_position_in_chunks();
+        Point2::new(
+            (chunk_x * minecraft::BLOCKS_IN_CHUNK as i32) as f32,
+            (chunk_z * minecraft::BLOCKS_IN_CHUNK as i32) as f32,
+        )
+    }
+
     pub fn offset(&self, offset_x: i32, offset_z: i32) -> Self {
         let mut chunk_x = offset_x + self.chunk_x as i32;
         let mut chunk_z = offset_z + self.chunk_z as i32;
@@ -168,13 +197,15 @@ impl ChunkPosition {
     }
 }
 
+const EPSILON: f32 = 0.0001;
+
 fn get_block_coord(world_coord: f32) -> usize {
     let negative = world_coord < 0.0;
 
     let coord_positive = if negative { -world_coord } else { world_coord };
 
     // coord x.yy is still within the block at x -> floor coord_positive
-    let block_coord = coord_positive as usize % minecraft::BLOCKS_IN_CHUNK;
+    let block_coord = (coord_positive + EPSILON) as usize % minecraft::BLOCKS_IN_CHUNK;
 
     if negative {
         minecraft::BLOCKS_IN_CHUNK - block_coord - 1
@@ -183,10 +214,37 @@ fn get_block_coord(world_coord: f32) -> usize {
     }
 }
 
+fn get_block_portion_in_range(block_start: usize, range_start: f32, range_end: f32) -> f32 {
+    let block_end = (block_start + 1) as f32; // everything is calculated in blocks
+    let block_start: f32 = block_start as f32;
+
+    let no_overlap = block_end < range_start || block_start > range_end;
+    if no_overlap {
+        return 0.0;
+    }
+
+    let mut portion: f32 = 1.0; // whole block is in range
+
+    // cut portion from start of block
+    if block_start < range_start {
+        portion -= range_start - block_start;
+    }
+
+    if block_end > range_end {
+        portion -= block_end - range_end;
+    }
+
+    portion
+}
+
+const CHUNK_SIZE: f32 = minecraft::BLOCKS_IN_CHUNK as f32;
+
 // A chunks is a 16*y*16 region of blocks
 pub struct Chunk {
     // A column major grid of towers
     data: [[MaterialTower; minecraft::BLOCKS_IN_CHUNK]; minecraft::BLOCKS_IN_CHUNK],
+
+    // This is the position of the bottom left corner of the chunk from a top down view
     position: ChunkPosition,
 }
 
@@ -247,6 +305,55 @@ impl Chunk {
         let tower = &self.data[x][z];
 
         tower.get_block_at_y(y)
+    }
+
+    // Intersection is a rectangle local to the chunk - its origin is in chunk local coordinates
+    // and the whole rectangle fits inside the chunk
+    pub fn get_chunk_intersection_volume(
+        &self,
+        intersection_xz: Rectangle,
+        y_low: f32,
+        y_high: f32,
+    ) -> f32 {
+        let intersection_start_index_x = get_block_coord(intersection_xz.left());
+        let intersection_start_index_z = get_block_coord(intersection_xz.bottom());
+
+        let intersection_end_index_x = min(
+            minecraft::BLOCKS_IN_CHUNK,
+            (intersection_xz.right() - EPSILON).ceil() as usize,
+        );
+        let intersection_end_index_z = min(
+            minecraft::BLOCKS_IN_CHUNK,
+            (intersection_xz.top() - EPSILON).ceil() as usize,
+        );
+
+        let mut volume: f32 = 0.0;
+        // Iterate over blocks that are intersected
+        for x in intersection_start_index_x..intersection_end_index_x {
+            for z in intersection_start_index_z..intersection_end_index_z {
+                let tower = &self.data[x][z];
+                let blocks = tower.get_layers_in_range(y_low, y_high);
+                let x_scale =
+                    get_block_portion_in_range(x, intersection_xz.left(), intersection_xz.right());
+                let z_scale =
+                    get_block_portion_in_range(z, intersection_xz.bottom(), intersection_xz.top());
+
+                for layer in blocks {
+                    // let material = layer.0;
+                    let y_scale = layer.1;
+
+                    let layer_volume = x_scale * y_scale * z_scale;
+                    volume += layer_volume;
+                }
+            }
+        }
+
+        volume
+    }
+
+    pub fn get_bounding_rectangle(&self) -> Rectangle {
+        let position_in_world = self.position.get_global_position();
+        Rectangle::square(position_in_world, minecraft::BLOCKS_IN_CHUNK as f32)
     }
 
     // TODO: set block? will be a litte complicated since we need to insert a new material stack or
@@ -415,5 +522,32 @@ impl World {
 
         let (block_x, block_z) = Chunk::get_block_coords(position.x, position.z);
         Some(chunk.get_block(block_x, position.y as isize, block_z))
+    }
+
+    pub fn sample_volume(&self, kernel: Kernel) -> f32 {
+        let kernel_box = kernel.get_bounding_rectangle();
+        let y_low = kernel.y_low();
+        let y_high = kernel.y_high();
+
+        self.chunks
+            .iter()
+            .filter_map(|chunk| {
+                let chunk_box = chunk.get_bounding_rectangle();
+                let Some(intersection) = chunk_box.intersect(kernel_box) else {
+                    return None;
+                };
+
+                let offset = chunk.position.get_global_position().map(|coord| -coord);
+                let intersection_local = intersection.offset_origin(offset);
+                let chunk_volume: f32 =
+                    chunk.get_chunk_intersection_volume(intersection_local, y_low, y_high);
+                Some(chunk_volume)
+            })
+            .sum()
+
+        //        self.chunks
+        //            .iter()
+        //            .map(|chunk| chunk.get_chunk_intersection_volume(kernel))
+        //            .sum()
     }
 }

@@ -26,7 +26,8 @@ use infrastructure::RenderState;
 use minecraft::get_minecraft_chunk_position;
 
 mod model;
-use model::discrete::World;
+use model::discrete;
+use model::implicit::{evaluate_density, Kernel};
 
 mod config;
 
@@ -36,7 +37,7 @@ const FS_SOURCE: &str = include_str!("shaders/fs.glsl");
 fn main() {
     let (event_loop, display) = create_window();
 
-    let mut world = World::new(config::SPAWN_POINT);
+    let mut world = discrete::World::new(config::SPAWN_POINT);
     let (vertex_buffer, indices) = geometry::cube_color_exclusive_vertex(&display);
     let mut instance_positions = {
         let blocks = world.get_block_data();
@@ -180,7 +181,7 @@ where
 fn get_imgui_builder(
     state: &RenderState,
     camera: &Camera,
-    world: &World,
+    world: &discrete::World,
 ) -> impl FnOnce(&imgui::Ui) {
     let position = camera.get_position();
     let direction = camera.get_direction();
@@ -191,6 +192,9 @@ fn get_imgui_builder(
         Some(block) => block,
         None => model::discrete::BlockType::Air,
     };
+
+    let kernel = Kernel { position };
+    let density = evaluate_density(world, kernel);
 
     let builder = move |ui: &imgui::Ui| {
         ui.window("stats")
@@ -218,6 +222,9 @@ fn get_imgui_builder(
                     chunk_position.chunk_x, chunk_position.chunk_z
                 ));
                 ui.text(format!("block: {:?}", block_at_position));
+
+                ui.separator();
+                ui.text(format!("density: {}", density));
             });
     };
 

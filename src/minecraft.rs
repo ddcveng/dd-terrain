@@ -104,9 +104,8 @@ pub fn get_block_type(block_id: &str) -> BlockType {
     }
 }
 
+// negative regions are indexed shifted by 1 to differentiate between positive and negative zeros
 pub fn get_minecraft_chunk_position(world_position: Point3<f32>) -> ChunkPosition {
-    // negative regions are indexed shifted by 1 to differentiate between positive and negative
-    // zeros
     let (region_x, region_z): (i32, i32) = {
         let mut bias = if world_position.x < 0.0 { -1 } else { 0 };
         let x = (world_position.x / (32.0 * 16.0)) as i32 + bias;
