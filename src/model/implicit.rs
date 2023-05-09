@@ -18,14 +18,6 @@ pub struct Kernel {
 }
 
 impl Kernel {
-    pub fn get_topdown_bottom_left_position(&self) -> Point2<f32> {
-        let mut pos = self.position.xz();
-        pos.x -= SIGMA;
-        pos.y -= SIGMA;
-
-        pos
-    }
-
     pub fn get_bounding_rectangle(&self) -> Rectangle {
         let origin = Point2 {
             x: self.position.x - SIGMA,

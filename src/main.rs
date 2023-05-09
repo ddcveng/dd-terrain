@@ -190,7 +190,7 @@ fn get_imgui_builder(
     let chunk_position = get_minecraft_chunk_position(position);
     let block_at_position = match world.get_block(position) {
         Some(block) => block,
-        None => model::discrete::BlockType::Air,
+        None => model::common::BlockType::Air,
     };
 
     let kernel = Kernel { position };

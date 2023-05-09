@@ -4,7 +4,8 @@ use fastnbt::from_bytes;
 use std::path::Path;
 
 use crate::config;
-use crate::model::discrete::{BlockType, Chunk, ChunkPosition};
+use crate::model::chunk::{Chunk, ChunkPosition};
+use crate::model::common::BlockType;
 
 pub const MIN_BLOCK_Y: isize = 32; // TODO: Real value is -64
 const MAX_BLOCK_Y: isize = 320;
