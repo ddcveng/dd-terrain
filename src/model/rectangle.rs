@@ -1,16 +1,16 @@
-use cgmath::Point2;
+use super::{Coord, PlanarPosition};
 
 #[derive(Copy, Clone)]
 pub struct Rectangle {
-    pub origin: Point2<f32>,
-    pub width: f32,
-    pub height: f32,
+    pub origin: PlanarPosition,
+    pub width: Coord,
+    pub height: Coord,
 }
 
-const EPSILON: f32 = 0.0001;
+const EPSILON: Coord = 0.0001;
 
 impl Rectangle {
-    pub fn square(origin: Point2<f32>, size: f32) -> Self {
+    pub fn square(origin: PlanarPosition, size: Coord) -> Self {
         Rectangle {
             origin,
             width: size,
@@ -19,7 +19,7 @@ impl Rectangle {
     }
 
     pub fn intersect(&self, other: Self) -> Option<Self> {
-        let intersection_origin = Point2 {
+        let intersection_origin = PlanarPosition {
             x: self.left().max(other.left()),
             y: self.bottom().max(other.bottom()),
         };
@@ -41,8 +41,8 @@ impl Rectangle {
         })
     }
 
-    pub fn offset_origin(self, offset: Point2<f32>) -> Self {
-        let offset_origin = Point2 {
+    pub fn offset_origin(self, offset: PlanarPosition) -> Self {
+        let offset_origin = PlanarPosition {
             x: self.origin.x + offset.x,
             y: self.origin.y + offset.y,
         };
@@ -54,16 +54,16 @@ impl Rectangle {
         }
     }
 
-    pub fn left(&self) -> f32 {
+    pub fn left(&self) -> Coord {
         self.origin.x
     }
-    pub fn right(&self) -> f32 {
+    pub fn right(&self) -> Coord {
         self.origin.x + self.width
     }
-    pub fn top(&self) -> f32 {
+    pub fn top(&self) -> Coord {
         self.origin.y + self.height
     }
-    pub fn bottom(&self) -> f32 {
+    pub fn bottom(&self) -> Coord {
         self.origin.y
     }
 }

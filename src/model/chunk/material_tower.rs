@@ -1,4 +1,4 @@
-use crate::model::common::BlockType;
+use crate::model::{common::BlockType, Coord, Real};
 
 #[derive(Clone, Copy)]
 pub struct MaterialLayer {
@@ -33,10 +33,10 @@ impl MaterialTower {
         return BlockType::Air;
     }
 
-    pub fn get_layers_in_range(&self, y_low: f32, y_high: f32) -> Vec<(BlockType, f32)> {
+    pub fn get_layers_in_range(&self, y_low: Coord, y_high: Coord) -> Vec<(BlockType, Real)> {
         let layers_in_range = self.data.iter().filter_map(|layer| {
-            let layer_low = (layer.base_height as f32).max(y_low);
-            let layer_high = (layer.base_height as f32 + layer.height as f32).min(y_high);
+            let layer_low = (layer.base_height as Real).max(y_low as Real);
+            let layer_high = (layer.base_height as Real + layer.height as Real).min(y_high as Real);
             let layer_in_range = layer_high > layer_low;
             if !layer_in_range {
                 return None;

@@ -1,4 +1,7 @@
-use crate::minecraft;
+use crate::{
+    minecraft,
+    model::{Coord, PlanarPosition},
+};
 use cgmath::Point2;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -19,11 +22,11 @@ impl ChunkPosition {
         (global_x, global_z)
     }
 
-    pub fn get_global_position(&self) -> Point2<f32> {
+    pub fn get_global_position(&self) -> PlanarPosition {
         let (chunk_x, chunk_z) = self.get_global_position_in_chunks();
         Point2::new(
-            (chunk_x * minecraft::BLOCKS_IN_CHUNK as i32) as f32,
-            (chunk_z * minecraft::BLOCKS_IN_CHUNK as i32) as f32,
+            (chunk_x * minecraft::BLOCKS_IN_CHUNK as i32) as Coord,
+            (chunk_z * minecraft::BLOCKS_IN_CHUNK as i32) as Coord,
         )
     }
 

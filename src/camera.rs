@@ -1,32 +1,37 @@
-use crate::{config, input::Direction, InputAction, InputConsumer, RenderState};
+use crate::{
+    config,
+    input::Direction,
+    model::{Position, Real},
+    InputAction, InputConsumer, RenderState,
+};
 use cgmath::{
     perspective, Angle, InnerSpace, Matrix4, Point3, Rad, SquareMatrix, Vector2, Vector3,
 };
 
 pub struct Camera {
-    pub world_to_view: Matrix4<f32>,
-    pub view_to_world: Matrix4<f32>,
-    pub projection: Matrix4<f32>,
-    translation: Vector3<f32>,
-    rotation: Option<Vector2<f32>>,
-    fovy: Rad<f32>,
-    aspect_ratio: f32,
-    near_clipping_plane: f32,
-    far_clipping_plane: f32,
+    pub world_to_view: Matrix4<Real>,
+    pub view_to_world: Matrix4<Real>,
+    pub projection: Matrix4<Real>,
+    translation: Vector3<Real>,
+    rotation: Option<Vector2<Real>>,
+    fovy: Rad<Real>,
+    aspect_ratio: Real,
+    near_clipping_plane: Real,
+    far_clipping_plane: Real,
 }
 
 impl Camera {
     pub fn new(
-        position: Point3<f32>,
-        look_at: Point3<f32>,
-        world_up_vector: Vector3<f32>,
-        fovy: Rad<f32>,
-        aspect_ratio: f32,
-        near_clipping_plane: f32,
-        far_clipping_plane: f32,
+        position: Position,
+        look_at: Position,
+        world_up_vector: Vector3<Real>,
+        fovy: Rad<Real>,
+        aspect_ratio: Real,
+        near_clipping_plane: Real,
+        far_clipping_plane: Real,
     ) -> Self {
         let projection = perspective(fovy, aspect_ratio, near_clipping_plane, far_clipping_plane);
-        let view = Matrix4::<f32>::look_at_rh(position, look_at, world_up_vector);
+        let view = Matrix4::<Real>::look_at_rh(position, look_at, world_up_vector);
         let view_inverse = view.invert().unwrap();
 
         Camera {
@@ -42,11 +47,11 @@ impl Camera {
         }
     }
 
-    pub fn update(&mut self, delta_time: f32) {
+    pub fn update(&mut self, delta_time: Real) {
         let direction = self.view_to_world.z;
 
-        let mut yaw: Rad<f32> = Angle::atan2(direction.z, direction.x);
-        let mut pitch: Rad<f32> = Angle::asin(direction.y);
+        let mut yaw: Rad<Real> = Angle::atan2(direction.z, direction.x);
+        let mut pitch: Rad<Real> = Angle::asin(direction.y);
 
         if let Some(rotation) = self.rotation {
             yaw += Rad(rotation.x * config::SENSITIVITY);
@@ -84,11 +89,11 @@ impl Camera {
 
     fn new_position(
         &self,
-        aside: Vector3<f32>,
-        up: Vector3<f32>,
-        dir: Vector3<f32>,
-        delta_time: f32,
-    ) -> Point3<f32> {
+        aside: Vector3<Real>,
+        up: Vector3<Real>,
+        dir: Vector3<Real>,
+        delta_time: Real,
+    ) -> Position {
         let position = Point3::from_homogeneous(self.view_to_world.w);
         let mut new_position = position;
         new_position += aside * self.translation.x * delta_time;
@@ -98,16 +103,16 @@ impl Camera {
         new_position
     }
 
-    pub fn get_position(&self) -> Point3<f32> {
+    pub fn get_position(&self) -> Position {
         return Point3::from_homogeneous(self.view_to_world.w);
     }
 
     // TODO: is this '-' here ok, or is my matrix wrong?
-    pub fn get_direction(&self) -> Vector3<f32> {
+    pub fn get_direction(&self) -> Vector3<Real> {
         return -self.view_to_world.z.truncate();
     }
 
-    fn update_aspect(&mut self, aspect_ratio: f32) {
+    fn update_aspect(&mut self, aspect_ratio: Real) {
         self.aspect_ratio = aspect_ratio;
 
         self.projection = perspective(
@@ -139,7 +144,7 @@ impl InputConsumer for Camera {
                 Direction::Down => self.translation.y = 0.0,
             },
             InputAction::Resized(width, height) => {
-                self.update_aspect(*width as f32 / *height as f32)
+                self.update_aspect(*width as Real / *height as Real)
             }
             _ => (),
         }
@@ -150,7 +155,7 @@ impl InputConsumer for Camera {
 
         if let InputAction::CursorMoved { x, y } = action {
             let rotation_direction =
-                Vector2::new(*x as f32, *y as f32).normalize_to(config::SPHERE_RADIUS);
+                Vector2::new(*x as Real, *y as Real).normalize_to(config::SPHERE_RADIUS);
 
             self.rotation = Some(rotation_direction);
         }
