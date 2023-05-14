@@ -1,5 +1,4 @@
 use array_init::array_init;
-use cgmath::Point3;
 use itertools;
 use std::cmp::max;
 use std::cmp::min;
@@ -12,6 +11,8 @@ use crate::minecraft;
 use super::chunk::{BlockData, Chunk, ChunkPosition};
 use super::common::BlockType;
 use super::implicit::Kernel;
+use super::Position;
+use super::Real;
 
 // Represents a 2D grid of chunks
 // Rows are parallel to the world x axis
@@ -90,7 +91,7 @@ fn get_iterator(
 const OFFSET_FROM_CENTER: usize = config::WORLD_SIZE / 2;
 
 impl World {
-    pub fn new(position: Point3<f32>) -> Self {
+    pub fn new(position: Position) -> Self {
         let center_chunk_position = get_minecraft_chunk_position(position);
 
         // Get position of chunk that corresponds to 0,0 in the world grid
@@ -120,7 +121,7 @@ impl World {
         blocks
     }
 
-    pub fn update(&mut self, new_position: Point3<f32>) -> bool {
+    pub fn update(&mut self, new_position: Position) -> bool {
         let new_center_chunk = get_minecraft_chunk_position(new_position);
         if self.center == new_center_chunk {
             return false;
@@ -165,7 +166,7 @@ impl World {
         return true;
     }
 
-    pub fn get_block(&self, position: Point3<f32>) -> Option<BlockType> {
+    pub fn get_block(&self, position: Position) -> Option<BlockType> {
         let chunk_position = get_minecraft_chunk_position(position);
         let chunk = self
             .chunks
@@ -180,7 +181,7 @@ impl World {
         Some(chunk.get_block(block_x, position.y as isize, block_z))
     }
 
-    pub fn sample_volume(&self, kernel: Kernel) -> f32 {
+    pub fn sample_volume(&self, kernel: Kernel) -> Real {
         let kernel_box = kernel.get_bounding_rectangle();
         let y_low = kernel.y_low();
         let y_high = kernel.y_high();
@@ -195,7 +196,7 @@ impl World {
 
                 let offset = chunk.position.get_global_position().map(|coord| -coord);
                 let intersection_local = intersection.offset_origin(offset);
-                let chunk_volume: f32 =
+                let chunk_volume =
                     chunk.get_chunk_intersection_volume(intersection_local, y_low, y_high);
                 Some(chunk_volume)
             })

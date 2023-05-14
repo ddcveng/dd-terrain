@@ -7,7 +7,8 @@ use glutin::event::VirtualKeyCode;
 use glutin::window::CursorGrabMode;
 use glutin::window::Window;
 
-use cgmath::{EuclideanSpace, Point3, Vector3};
+use array_init::array_init;
+use cgmath::{EuclideanSpace, Matrix4, Point3, Vector3};
 
 mod imgui_wrapper;
 use imgui_wrapper::ImguiWrapper;
@@ -26,8 +27,8 @@ use infrastructure::RenderState;
 use minecraft::get_minecraft_chunk_position;
 
 mod model;
-use model::discrete;
-use model::implicit::{evaluate_density, Kernel};
+use model::implicit::{evaluate_density, get_gradient};
+use model::{discrete, Real};
 
 mod config;
 
@@ -53,13 +54,13 @@ fn main() {
 
     let mut imgui_data = ImguiWrapper::new(&display);
     let dimensions = display.get_framebuffer_dimensions();
-    let aspect_ratio = dimensions.0 as f32 / dimensions.1 as f32;
+    let aspect_ratio = dimensions.0 as Real / dimensions.1 as Real;
     let mut camera = Camera::new(
         config::SPAWN_POINT,
         Point3::origin(),
         Vector3::unit_y(),
         config::FOVY,
-        aspect_ratio as f32,
+        aspect_ratio,
         config::Z_NEAR,
         config::Z_FAR,
     );
@@ -86,7 +87,7 @@ fn main() {
                 camera.consume(action, &render_state);
             }
 
-            camera.update(render_state.timing.delta_time.as_secs_f32());
+            camera.update(render_state.timing.delta_time.as_secs_f64());
             let update_geometry = world.update(camera.get_position());
             if update_geometry {
                 instance_positions = {
@@ -138,6 +139,10 @@ fn main() {
     });
 }
 
+fn to_uniform_matrix(matrix: &Matrix4<Real>) -> [[f32; 4]; 4] {
+    array_init(|i| array_init(|j| matrix[i][j] as f32))
+}
+
 fn render_world<'a, D, T, I>(
     fragment: &'a RenderFragment<'a, T, I>,
     target: &mut Frame,
@@ -152,8 +157,8 @@ where
     IndicesSource<'a>: From<&'a I>,
 {
     let model: [[f32; 4]; 4] = cgmath::Matrix4::from_scale(1.0).into();
-    let projection: [[f32; 4]; 4] = camera.projection.into();
-    let view: [[f32; 4]; 4] = camera.world_to_view.into();
+    let projection: [[f32; 4]; 4] = to_uniform_matrix(&camera.projection);
+    let view: [[f32; 4]; 4] = to_uniform_matrix(&camera.world_to_view);
     let uni = uniform! {
         projection: projection,
         view: view,
@@ -193,8 +198,8 @@ fn get_imgui_builder(
         None => model::common::BlockType::Air,
     };
 
-    let kernel = Kernel { position };
-    let density = evaluate_density(world, kernel);
+    let density = evaluate_density(world, position);
+    let gradient = get_gradient(world, position);
 
     let builder = move |ui: &imgui::Ui| {
         ui.window("stats")
@@ -225,6 +230,10 @@ fn get_imgui_builder(
 
                 ui.separator();
                 ui.text(format!("density: {}", density));
+                ui.text(format!(
+                    "gradient: {:.2} {:.2} {:.2}",
+                    gradient.x, gradient.y, gradient.z
+                ));
             });
     };
 

@@ -5,10 +5,11 @@ use super::ChunkPosition;
 use crate::minecraft;
 use crate::model::common::{get_block_color, BlockType};
 use crate::model::rectangle::Rectangle;
+use crate::model::{Coord, Real};
 use array_init::array_init;
 use glium::implement_vertex;
 
-const EPSILON: f32 = 0.0001;
+const EPSILON: Coord = 0.0001;
 
 // Data used for instancing all the blocks
 #[derive(Clone, Copy)]
@@ -31,13 +32,13 @@ pub struct Chunk {
 }
 
 // TODO: maybe move to common?
-fn get_block_coord(world_coord: f32) -> usize {
+fn get_block_coord(world_coord: Coord) -> usize {
     let negative = world_coord < 0.0;
 
     let coord_positive = if negative { -world_coord } else { world_coord };
 
     // coord x.yy is still within the block at x -> floor coord_positive
-    let block_coord = (coord_positive + EPSILON) as usize % CHUNK_SIZE;
+    let block_coord = (coord_positive + EPSILON as Coord) as usize % CHUNK_SIZE;
 
     if negative {
         CHUNK_SIZE - block_coord - 1
@@ -46,16 +47,18 @@ fn get_block_coord(world_coord: f32) -> usize {
     }
 }
 
-fn get_block_portion_in_range(block_start: usize, range_start: f32, range_end: f32) -> f32 {
-    let block_end = (block_start + 1) as f32; // everything is calculated in blocks
-    let block_start: f32 = block_start as f32;
+fn get_block_portion_in_range(block_start: usize, range_start: Coord, range_end: Coord) -> Real {
+    let range_start = range_start as Real;
+    let range_end = range_end as Real;
+    let block_end = (block_start + 1) as Real; // everything is calculated in blocks
+    let block_start = block_start as Real;
 
     let no_overlap = block_end < range_start || block_start > range_end;
     if no_overlap {
         return 0.0;
     }
 
-    let mut portion: f32 = 1.0; // whole block is in range
+    let mut portion: Real = 1.0; // whole block is in range
 
     // cut portion from start of block
     if block_start < range_start {
@@ -120,7 +123,7 @@ impl Chunk {
         blocks
     }
 
-    pub fn get_block_coords(x: f32, z: f32) -> (usize, usize) {
+    pub fn get_block_coords(x: Coord, z: Coord) -> (usize, usize) {
         let block_x = get_block_coord(x);
         let block_z = get_block_coord(z);
 
@@ -138,9 +141,9 @@ impl Chunk {
     pub fn get_chunk_intersection_volume(
         &self,
         intersection_xz: Rectangle,
-        y_low: f32,
-        y_high: f32,
-    ) -> f32 {
+        y_low: Coord,
+        y_high: Coord,
+    ) -> Real {
         let intersection_start_index_x = get_block_coord(intersection_xz.left());
         let intersection_start_index_z = get_block_coord(intersection_xz.bottom());
 
@@ -153,7 +156,7 @@ impl Chunk {
             (intersection_xz.top() - EPSILON).ceil() as usize,
         );
 
-        let mut volume: f32 = 0.0;
+        let mut volume: Real = 0.0;
         // Iterate over blocks that are intersected
         for x in intersection_start_index_x..intersection_end_index_x {
             for z in intersection_start_index_z..intersection_end_index_z {
@@ -179,6 +182,6 @@ impl Chunk {
 
     pub fn get_bounding_rectangle(&self) -> Rectangle {
         let position_in_world = self.position.get_global_position();
-        Rectangle::square(position_in_world, CHUNK_SIZE as f32)
+        Rectangle::square(position_in_world, CHUNK_SIZE as Coord)
     }
 }
