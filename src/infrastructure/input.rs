@@ -1,5 +1,6 @@
-use glium::glutin::event::{Event, VirtualKeyCode, WindowEvent};
-use glutin::event::{DeviceEvent, ElementState};
+use glium::glutin::event::{
+    DeviceEvent, ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent,
+};
 
 use crate::RenderState;
 
@@ -14,7 +15,7 @@ pub enum Direction {
 }
 
 type Key = VirtualKeyCode;
-type MouseButton = glutin::event::MouseButton;
+type MouseButton = glium::glutin::event::MouseButton;
 
 #[derive(Debug)]
 pub enum InputAction {
@@ -68,7 +69,7 @@ fn translate_device_event(event: DeviceEvent) -> Option<InputAction> {
     }
 }
 
-fn handle_keypress(event: &glutin::event::KeyboardInput) -> Option<InputAction> {
+fn handle_keypress(event: &KeyboardInput) -> Option<InputAction> {
     let pressed = event.state == ElementState::Pressed;
     let keycode = match event.virtual_keycode {
         Some(key) => key,

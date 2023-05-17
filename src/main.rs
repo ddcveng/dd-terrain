@@ -1,11 +1,11 @@
 use glium::glutin::event::{Event, WindowEvent};
 use glium::glutin::event_loop::{ControlFlow, EventLoop};
 use glium::index::IndicesSource;
-use glium::{uniform, Frame, Surface, VertexBuffer};
+use glium::{uniform, Display, Frame, IndexBuffer, Surface};
 
-use glutin::event::VirtualKeyCode;
-use glutin::window::CursorGrabMode;
-use glutin::window::Window;
+use glium::glutin::event::VirtualKeyCode;
+use glium::glutin::window::CursorGrabMode;
+use glium::glutin::window::Window;
 
 use array_init::array_init;
 use cgmath::{EuclideanSpace, Matrix4, Point3, Vector3};
@@ -22,35 +22,45 @@ mod geometry;
 
 mod infrastructure;
 use infrastructure::input::{self, InputAction, InputConsumer};
-use infrastructure::render_fragment::{RenderFragment, RenderFragmentBuilder};
-use infrastructure::RenderState;
+use infrastructure::render_fragment::RenderFragmentBuilder;
+use infrastructure::{RenderState, RenderingMode};
 use minecraft::get_minecraft_chunk_position;
 
 mod model;
+use model::discrete::World;
 use model::implicit::{evaluate_density, get_gradient};
-use model::{discrete, Real};
+use model::polygonize::{Mesh, MeshVertex, Rectangle3D};
+use model::{discrete, Position, Real};
 
 mod config;
+mod scene;
+use scene::{NoInstance, Scene};
 
-const VS_SOURCE: &str = include_str!("shaders/vs.glsl");
-const FS_SOURCE: &str = include_str!("shaders/fs.glsl");
+use crate::model::PlanarPosition;
+
+const DISCRETE_VS: &str = include_str!("shaders/discrete_vs.glsl");
+const DISCRETE_FS: &str = include_str!("shaders/discrete_fs.glsl");
+const IMPLICIT_VS: &str = include_str!("shaders/implicit_vs.glsl");
+const IMPLICIT_FS: &str = include_str!("shaders/implicit_fs.glsl");
 
 fn main() {
     let (event_loop, display) = create_window();
 
     let mut world = discrete::World::new(config::SPAWN_POINT);
     let (vertex_buffer, indices) = geometry::cube_color_exclusive_vertex(&display);
-    let mut instance_positions = {
+    let instance_positions = {
         let blocks = world.get_block_data();
         glium::vertex::VertexBuffer::new(&display, &blocks).unwrap()
     };
 
     let cube_fragment = RenderFragmentBuilder::new()
         .set_geometry(vertex_buffer, indices)
-        .set_vertex_shader(VS_SOURCE)
-        .set_fragment_shader(FS_SOURCE)
+        .set_vertex_shader(DISCRETE_VS)
+        .set_fragment_shader(DISCRETE_FS)
         .build(&display)
         .unwrap();
+
+    let mut discrete_scene = Scene::new_instanced(cube_fragment, instance_positions);
 
     let mut imgui_data = ImguiWrapper::new(&display);
     let dimensions = display.get_framebuffer_dimensions();
@@ -88,12 +98,13 @@ fn main() {
             }
 
             camera.update(render_state.timing.delta_time.as_secs_f64());
-            let update_geometry = world.update(camera.get_position());
+            let update_geometry = false; //world.update(camera.get_position());
             if update_geometry {
-                instance_positions = {
+                let instance_positions = {
                     let blocks = world.get_block_data();
                     glium::vertex::VertexBuffer::new(&display, &blocks).unwrap()
                 };
+                discrete_scene.update_instance_data(instance_positions);
             }
 
             gl_window.window().request_redraw();
@@ -108,13 +119,15 @@ fn main() {
             target.clear_depth(1.0);
 
             // Draw Scene
-            render_world(
-                &cube_fragment,
-                &mut target,
-                &instance_positions,
-                &camera,
-                &render_state,
-            );
+            match render_state.render_mode {
+                RenderingMode::Discrete => {
+                    render_world(&discrete_scene, &mut target, &camera, &render_state)
+                }
+                RenderingMode::Implicit => {
+                    let implicit_scene = create_implicit_scene(&world, &display);
+                    render_world(&implicit_scene, &mut target, &camera, &render_state);
+                }
+            }
 
             // Draw imgui last so it shows on top of everything
             let imgui_frame_builder = get_imgui_builder(&render_state, &camera, &world);
@@ -128,6 +141,7 @@ fn main() {
             event: WindowEvent::CloseRequested,
             ..
         } => *control_flow = ControlFlow::Exit,
+
         event => {
             let gl_window = display.gl_window();
             imgui_data.handle_event(gl_window.window(), &event);
@@ -143,10 +157,50 @@ fn to_uniform_matrix(matrix: &Matrix4<Real>) -> [[f32; 4]; 4] {
     array_init(|i| array_init(|j| matrix[i][j] as f32))
 }
 
+fn polygonize(world: &discrete::World) -> Mesh {
+    let xz_position = PlanarPosition::new(194.0, 175.0);
+    let support_size = 20.0;
+    let pos = Position::new(xz_position.x, 63.0, xz_position.y);
+    //    println!("-----------------------------------");
+    //    println!("Polygonizing grid from position {pos:?} with size {support_size}");
+
+    let support = Rectangle3D {
+        position: pos,
+        width: support_size,
+        height: support_size,
+        depth: support_size,
+    };
+
+    let density_func = |p| model::implicit::evaluate_density(world, p);
+    model::polygonize::polygonize(density_func, support)
+}
+
+fn create_implicit_scene<'a>(
+    world: &World,
+    display: &Display,
+) -> Scene<'a, NoInstance, MeshVertex, IndexBuffer<u32>> {
+    let mesh = polygonize(world);
+    let vertex_buffer = glium::VertexBuffer::new(display, &mesh.vertices).unwrap();
+    let index_buffer = glium::IndexBuffer::new(
+        display,
+        glium::index::PrimitiveType::TrianglesList,
+        &mesh.indices,
+    )
+    .unwrap();
+
+    let fragment = RenderFragmentBuilder::new()
+        .set_geometry(vertex_buffer, index_buffer)
+        .set_vertex_shader(IMPLICIT_VS)
+        .set_fragment_shader(IMPLICIT_FS)
+        .build(display)
+        .unwrap();
+
+    Scene::new(fragment)
+}
+
 fn render_world<'a, D, T, I>(
-    fragment: &'a RenderFragment<'a, T, I>,
+    scene: &'a Scene<'a, D, T, I>,
     target: &mut Frame,
-    instance_data: &VertexBuffer<D>,
     camera: &Camera,
     state: &RenderState,
 ) -> ()
@@ -180,7 +234,13 @@ where
         ..Default::default()
     };
 
-    fragment.render_instanced(target, &uni, &instance_data, Some(draw_parameters));
+    if let Some(instance_data) = &scene.instance_data {
+        scene
+            .fragment
+            .render_instanced(target, &uni, instance_data, Some(draw_parameters));
+    } else {
+        scene.fragment.render(target, &uni, Some(draw_parameters));
+    }
 }
 
 fn get_imgui_builder(
@@ -197,6 +257,7 @@ fn get_imgui_builder(
         Some(block) => block,
         None => model::common::BlockType::Air,
     };
+    let render_mode = state.render_mode;
 
     let density = evaluate_density(world, position);
     let gradient = get_gradient(world, position);
@@ -207,6 +268,7 @@ fn get_imgui_builder(
             .build(|| {
                 ui.text(format!("fps: {:.2}", fps));
                 ui.text(format!("cursor captured: {}", is_cursor_captured));
+                ui.text(format!("rendering mode: {render_mode:?}"));
                 ui.separator();
                 ui.text(format!(
                     "position: x: {:.2} y: {:.2} z: {:.2}",
@@ -248,6 +310,7 @@ fn create_state(
     let mut cursor_captured = old_state.cursor_captured;
     let mut should_render = true;
     let mut render_wireframe = old_state.render_wireframe;
+    let mut render_mode = old_state.render_mode;
 
     for action in events {
         match action {
@@ -259,6 +322,12 @@ fn create_state(
             InputAction::KeyPressed {
                 key: VirtualKeyCode::B,
             } => render_wireframe = !render_wireframe,
+            InputAction::KeyPressed {
+                key: VirtualKeyCode::U,
+            } => render_mode = RenderingMode::Discrete,
+            InputAction::KeyPressed {
+                key: VirtualKeyCode::I,
+            } => render_mode = RenderingMode::Implicit,
             _ => (),
         };
     }
@@ -271,6 +340,7 @@ fn create_state(
         timing: old_state.timing,
         cursor_captured,
         render_wireframe,
+        render_mode,
     })
 }
 
