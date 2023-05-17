@@ -43,7 +43,7 @@ impl Kernel {
 
 pub fn evaluate_density(model: &World, point: Position) -> Real {
     let kernel = Kernel { position: point };
-    return -evaluate_density_inner(model, kernel);
+    return evaluate_density_inner(model, kernel);
 }
 
 // 2 * (material_volume / kernel_volume) - 1
@@ -59,14 +59,14 @@ enum Parameter {
     Z = 2,
 }
 
-fn differentiate(f: impl Fn(Position) -> Real, x: Position, next_x: Position, h: Real) -> Real {
+fn differentiate(f: &impl Fn(Position) -> Real, x: Position, next_x: Position, h: Real) -> Real {
     let fx = f(x);
     let fnext_x = f(next_x);
 
     (fnext_x - fx) / h
 }
 
-fn differentiate_dynamic(f: impl Fn(Position) -> Real, p: Position, target: Parameter) -> Real {
+fn differentiate_dynamic(f: &impl Fn(Position) -> Real, p: Position, target: Parameter) -> Real {
     let get_delta_for = |parameter: Parameter| {
         if parameter == target {
             EPSILON
@@ -87,9 +87,13 @@ fn differentiate_dynamic(f: impl Fn(Position) -> Real, p: Position, target: Para
 pub fn get_gradient(model: &World, point: Position) -> Vector3<Real> {
     let f = |p| evaluate_density(model, p);
 
-    let dx = differentiate_dynamic(f, point, Parameter::X);
-    let dy = differentiate_dynamic(f, point, Parameter::Y);
-    let dz = differentiate_dynamic(f, point, Parameter::Z);
+    gradient(f, point)
+}
+
+pub fn gradient(f: impl Fn(Position) -> Real, point: Position) -> Vector3<Real> {
+    let dx = differentiate_dynamic(&f, point, Parameter::X);
+    let dy = differentiate_dynamic(&f, point, Parameter::Y);
+    let dz = differentiate_dynamic(&f, point, Parameter::Z);
 
     Vector3::new(dx, dy, dz)
 }

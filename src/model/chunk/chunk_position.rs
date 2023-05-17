@@ -2,7 +2,6 @@ use crate::{
     minecraft,
     model::{Coord, PlanarPosition},
 };
-use cgmath::Point2;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ChunkPosition {
@@ -24,7 +23,7 @@ impl ChunkPosition {
 
     pub fn get_global_position(&self) -> PlanarPosition {
         let (chunk_x, chunk_z) = self.get_global_position_in_chunks();
-        Point2::new(
+        PlanarPosition::new(
             (chunk_x * minecraft::BLOCKS_IN_CHUNK as i32) as Coord,
             (chunk_z * minecraft::BLOCKS_IN_CHUNK as i32) as Coord,
         )

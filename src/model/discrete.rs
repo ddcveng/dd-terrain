@@ -27,8 +27,9 @@ pub struct World {
     // Internal grid representation as a flat array
     chunks: [Chunk; WORLD_SIZE * WORLD_SIZE],
 
+    // TODO: make private and get the world support to polygonize another way
     // Position of the center chunk in the world
-    center: ChunkPosition,
+    pub center: ChunkPosition,
 }
 
 fn get_difference_1d(region: i32, chunk: usize, new_region: i32, new_chunk: usize) -> i32 {
@@ -121,6 +122,7 @@ impl World {
         blocks
     }
 
+    // Returns true if a new part of the world was loaded
     pub fn update(&mut self, new_position: Position) -> bool {
         let new_center_chunk = get_minecraft_chunk_position(new_position);
         if self.center == new_center_chunk {

@@ -1,18 +1,26 @@
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Copy, Clone)]
+pub enum RenderingMode {
+    Discrete,
+    Implicit,
+}
+
+#[derive(Debug, Copy, Clone)]
 pub struct RenderState {
     pub timing: Timing,
     pub cursor_captured: bool,
     pub render_wireframe: bool,
+    pub render_mode: RenderingMode,
 }
 
 impl RenderState {
     pub fn new() -> Self {
-        RenderState { 
+        RenderState {
             timing: Timing::new(),
             cursor_captured: false,
-            render_wireframe: false 
+            render_wireframe: false,
+            render_mode: RenderingMode::Discrete,
         }
     }
 }
@@ -28,7 +36,7 @@ pub struct Timing {
 impl Timing {
     pub fn new() -> Self {
         let now = Instant::now();
-        Timing { 
+        Timing {
             delta_time: Duration::ZERO,
             running_time: Duration::ZERO,
             starting_time: now,

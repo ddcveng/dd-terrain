@@ -1,8 +1,8 @@
 use crate::infrastructure::vertex::Vertex;
-use glium::{index::PrimitiveType, IndexBuffer, VertexBuffer, Display};
+use glium::{index::PrimitiveType, Display, IndexBuffer, VertexBuffer};
 
 // colorful unit cube, each face has exclusive vertexes
-pub fn cube_color_exclusive_vertex(display: &Display) -> (VertexBuffer<Vertex>, IndexBuffer<u32>){
+pub fn cube_color_exclusive_vertex(display: &Display) -> (VertexBuffer<Vertex>, IndexBuffer<u32>) {
     // front face
     let color_red = [1.0, 0.0, 0.0];
     let front_normal = [0.0, 0.0, 1.0];
@@ -150,25 +150,19 @@ pub fn cube_color_exclusive_vertex(display: &Display) -> (VertexBuffer<Vertex>, 
     };
 
     let shape = vec![
-        front_dl, front_dr, front_ul, front_ur,
-        top_dl, top_dr, top_ul, top_ur,
-        back_dl, back_dr, back_ul, back_ur,
-        bottom_dl, bottom_dr, bottom_ul, bottom_ur,
-        left_dl, left_dr, left_ul, left_ur,
-        right_dl, right_dr, right_ul, right_ur,
+        front_dl, front_dr, front_ul, front_ur, top_dl, top_dr, top_ul, top_ur, back_dl, back_dr,
+        back_ul, back_ur, bottom_dl, bottom_dr, bottom_ul, bottom_ur, left_dl, left_dr, left_ul,
+        left_ur, right_dl, right_dr, right_ul, right_ur,
     ];
     let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
 
     // Faces share vertices, but the cube does not
     let indices = vec![
-        0, 1, 2, 2, 1, 3,
-        4, 5, 6, 6, 5, 7,
-        8, 9, 10, 10, 9, 11,
-        12, 13, 14, 14, 13, 15,
-        16, 17, 18, 18, 17, 19,
-        20, 21, 22, 22, 21, 23,
+        0, 1, 2, 2, 1, 3, 4, 5, 6, 6, 5, 7, 8, 9, 10, 10, 9, 11, 12, 13, 14, 14, 13, 15, 16, 17,
+        18, 18, 17, 19, 20, 21, 22, 22, 21, 23,
     ];
-    let index_buffer = glium::IndexBuffer::new(display, PrimitiveType::TrianglesList, &indices).unwrap();
+    let index_buffer =
+        glium::IndexBuffer::new(display, PrimitiveType::TrianglesList, &indices).unwrap();
 
     (vertex_buffer, index_buffer)
 }
