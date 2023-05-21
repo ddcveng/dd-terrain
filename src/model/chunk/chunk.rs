@@ -8,6 +8,7 @@ use crate::model::rectangle::Rectangle;
 use crate::model::{Coord, Real};
 use array_init::array_init;
 use glium::implement_vertex;
+use itertools::Itertools;
 
 const EPSILON: Coord = 0.0001;
 
@@ -156,26 +157,47 @@ impl Chunk {
             (intersection_xz.top() - EPSILON).ceil() as usize,
         );
 
-        let mut volume: Real = 0.0;
         // Iterate over blocks that are intersected
-        for x in intersection_start_index_x..intersection_end_index_x {
-            for z in intersection_start_index_z..intersection_end_index_z {
-                let tower = self.get_tower(x, z);
-                let blocks = tower.get_layers_in_range(y_low, y_high);
-                let x_scale =
-                    get_block_portion_in_range(x, intersection_xz.left(), intersection_xz.right());
-                let z_scale =
-                    get_block_portion_in_range(z, intersection_xz.bottom(), intersection_xz.top());
+        let intersection_range = (intersection_start_index_x..intersection_end_index_x)
+            .cartesian_product(intersection_start_index_z..intersection_end_index_z);
+        let volume = intersection_range.fold(0.0, move |acc, (x, z)| {
+            let x_scale =
+                get_block_portion_in_range(x, intersection_xz.left(), intersection_xz.right());
+            let z_scale =
+                get_block_portion_in_range(z, intersection_xz.bottom(), intersection_xz.top());
+            let y_scale = self
+                .get_tower(x, z)
+                .get_size_of_blocks_in_range(y_low, y_high);
 
-                for layer in blocks {
-                    // let material = layer.0;
-                    let y_scale = layer.1;
-
-                    let layer_volume = x_scale * y_scale * z_scale;
-                    volume += layer_volume;
-                }
-            }
-        }
+            let intersection_volume = x_scale * y_scale * z_scale;
+            acc + intersection_volume
+        });
+        //        for x in intersection_start_index_x..intersection_end_index_x {
+        //            for z in intersection_start_index_z..intersection_end_index_z {
+        //                let x_scale =
+        //                    get_block_portion_in_range(x, intersection_xz.left(), intersection_xz.right());
+        //                let z_scale =
+        //                    get_block_portion_in_range(z, intersection_xz.bottom(), intersection_xz.top());
+        //                let y_scale = self
+        //                    .get_tower(x, z)
+        //                    .get_size_of_blocks_in_range(y_low, y_high);
+        //
+        //                let intersection_volume = x_scale * y_scale * z_scale;
+        //
+        //                //                let intersection_volume: Real = self
+        //                //                    .get_tower(x, z)
+        //                //                    .get_layers_in_range(y_low, y_high)
+        //                //                    .map(|layer| {
+        //                //                        let y_scale = layer.1;
+        //                //                        let layer_volume = x_scale * y_scale * z_scale;
+        //                //
+        //                //                        layer_volume
+        //                //                    })
+        //                //                    .sum();
+        //
+        //                volume += intersection_volume;
+        //            }
+        //        }
 
         volume
     }
