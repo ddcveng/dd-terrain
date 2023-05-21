@@ -57,43 +57,35 @@ impl MaterialTower {
             let layer_low = (layer_base).max(y_low as Real);
             let layer_high = (layer_base + layer.height as Real).min(y_high as Real);
 
-            let layer_size = (layer_high - layer_low).max(0.0);
+            let layer_in_range = layer_high > layer_low;
+            if !layer_in_range {
+                return acc;
+            }
+
+            let layer_size = layer_high - layer_low;
             acc + layer_size
         })
     }
 
-    pub fn get_layers_in_range(
-        &self,
-        y_low: Coord,
-        y_high: Coord,
-    ) -> impl Iterator<Item = (BlockType, Real)> + '_ {
-        let layers_in_range = self.data.iter().filter_map(move |layer| {
-            let layer_low = (layer.base_height as Real).max(y_low as Real);
-            let layer_high = (layer.base_height as Real + layer.height as Real).min(y_high as Real);
-            let layer_in_range = layer_high > layer_low;
-            if !layer_in_range {
-                return None;
-            }
+    // The block layers are ordered from low y to high y
+    // so lower bound is the base of the first layer
+    // and upper bound is the top of the last layer
+    fn update_bounds(&mut self) {
+        let init_lower_bound = self.lower_bound.is_none() && self.data.len() == 1;
+        if init_lower_bound {
+            self.lower_bound = Some(self.data[0].base_height);
+        }
 
-            let new_height = layer_high - layer_low;
-            Some((layer.material, new_height))
-        });
-
-        layers_in_range
-        //return layers_in_range.collect();
+        let last_element = self
+            .data
+            .last()
+            .expect("There should be a layer present in the tower!");
+        self.upper_bound = Some(last_element.base_height + last_element.height as isize);
     }
 
     pub fn push(&mut self, block: BlockType, base_height: isize) {
         // We do not want to store Air blocks for now
         debug_assert!(block != BlockType::Air);
-        if self.data.is_empty() {
-            self.lower_bound = Some(base_height);
-        }
-
-        self.upper_bound = {
-            let current_bound = self.upper_bound.unwrap_or(base_height);
-            Some(current_bound + 1)
-        };
 
         let extend_top_layer = match self.data.last() {
             Some(layer) => {
@@ -121,5 +113,6 @@ impl MaterialTower {
         };
 
         self.data.push(segment);
+        self.update_bounds();
     }
 }
