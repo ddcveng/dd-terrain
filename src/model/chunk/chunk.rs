@@ -172,32 +172,6 @@ impl Chunk {
             let intersection_volume = x_scale * y_scale * z_scale;
             acc + intersection_volume
         });
-        //        for x in intersection_start_index_x..intersection_end_index_x {
-        //            for z in intersection_start_index_z..intersection_end_index_z {
-        //                let x_scale =
-        //                    get_block_portion_in_range(x, intersection_xz.left(), intersection_xz.right());
-        //                let z_scale =
-        //                    get_block_portion_in_range(z, intersection_xz.bottom(), intersection_xz.top());
-        //                let y_scale = self
-        //                    .get_tower(x, z)
-        //                    .get_size_of_blocks_in_range(y_low, y_high);
-        //
-        //                let intersection_volume = x_scale * y_scale * z_scale;
-        //
-        //                //                let intersection_volume: Real = self
-        //                //                    .get_tower(x, z)
-        //                //                    .get_layers_in_range(y_low, y_high)
-        //                //                    .map(|layer| {
-        //                //                        let y_scale = layer.1;
-        //                //                        let layer_volume = x_scale * y_scale * z_scale;
-        //                //
-        //                //                        layer_volume
-        //                //                    })
-        //                //                    .sum();
-        //
-        //                volume += intersection_volume;
-        //            }
-        //        }
 
         volume
     }
