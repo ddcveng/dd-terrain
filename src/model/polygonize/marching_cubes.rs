@@ -87,7 +87,7 @@ fn build_mesh_vertices(
     density_func: &impl Fn(Position) -> Real,
 ) -> (Vec<MeshVertex>, IntersectionVertexMap) {
     let build_vertex = |p| {
-        let normal = -implicit::gradient(density_func, p).normalize();
+        let normal = -implicit::gradient_fast(density_func, p).normalize();
         MeshVertex {
             position: [p.x as f32, p.y as f32, p.z as f32],
             normal: [normal.x as f32, normal.y as f32, normal.z as f32],

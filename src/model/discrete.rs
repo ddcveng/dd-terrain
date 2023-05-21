@@ -188,20 +188,18 @@ impl World {
         let y_low = kernel.y_low();
         let y_high = kernel.y_high();
 
-        self.chunks
-            .iter()
-            .filter_map(|chunk| {
-                let chunk_box = chunk.get_bounding_rectangle();
-                let Some(intersection) = chunk_box.intersect(kernel_box) else {
-                    return None;
-                };
+        self.chunks.iter().fold(0.0, |acc, chunk| {
+            let chunk_box = chunk.get_bounding_rectangle();
+            let Some(intersection) = chunk_box.intersect(kernel_box) else {
+                return acc;
+            };
 
-                let offset = chunk.position.get_global_position().map(|coord| -coord);
-                let intersection_local = intersection.offset_origin(offset);
-                let chunk_volume =
-                    chunk.get_chunk_intersection_volume(intersection_local, y_low, y_high);
-                Some(chunk_volume)
-            })
-            .sum()
+            let offset = chunk.position.get_global_position().map(|coord| -coord);
+            let intersection_local = intersection.offset_origin(offset);
+            let chunk_volume =
+                chunk.get_chunk_intersection_volume(intersection_local, y_low, y_high);
+
+            acc + chunk_volume
+        })
     }
 }

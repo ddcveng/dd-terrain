@@ -66,6 +66,24 @@ fn differentiate(f: &impl Fn(Position) -> Real, x: Position, next_x: Position, h
     (fnext_x - fx) / h
 }
 
+fn offset_position(pos: Position, dimension: Parameter) -> Position {
+    let get_delta_for = |parameter: Parameter| {
+        if parameter == dimension {
+            EPSILON
+        } else {
+            0.0
+        }
+    };
+
+    let next_p = Point3 {
+        x: pos.x + get_delta_for(Parameter::X),
+        y: pos.y + get_delta_for(Parameter::Y),
+        z: pos.z + get_delta_for(Parameter::Z),
+    };
+
+    next_p
+}
+
 fn differentiate_dynamic(f: &impl Fn(Position) -> Real, p: Position, target: Parameter) -> Real {
     let get_delta_for = |parameter: Parameter| {
         if parameter == target {
@@ -94,6 +112,21 @@ pub fn gradient(f: impl Fn(Position) -> Real, point: Position) -> Vector3<Real> 
     let dx = differentiate_dynamic(&f, point, Parameter::X);
     let dy = differentiate_dynamic(&f, point, Parameter::Y);
     let dz = differentiate_dynamic(&f, point, Parameter::Z);
+
+    Vector3::new(dx, dy, dz)
+}
+
+// Only evaluates the function f 4 times instead of the regular 6
+pub fn gradient_fast(f: impl Fn(Position) -> Real, point: Position) -> Vector3<Real> {
+    let fx = f(point);
+    let fnext_x = f(offset_position(point, Parameter::X));
+    let fnext_y = f(offset_position(point, Parameter::Y));
+    let fnext_z = f(offset_position(point, Parameter::Z));
+
+    let differentiate_simple = |val| (val - fx) / EPSILON;
+    let dx = differentiate_simple(fnext_x);
+    let dy = differentiate_simple(fnext_y);
+    let dz = differentiate_simple(fnext_z);
 
     Vector3::new(dx, dy, dz)
 }

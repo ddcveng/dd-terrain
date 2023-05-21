@@ -13,11 +13,17 @@ pub struct MaterialLayer {
 // Block layers are ordered from lowest to highest y coordinate
 pub struct MaterialTower {
     pub data: Vec<MaterialLayer>,
+    lower_bound: Option<isize>,
+    upper_bound: Option<isize>,
 }
 
 impl MaterialTower {
     pub fn new() -> Self {
-        MaterialTower { data: Vec::new() }
+        MaterialTower {
+            data: Vec::new(),
+            lower_bound: None,
+            upper_bound: None,
+        }
     }
 
     pub fn get_block_at_y(&self, y: isize) -> BlockType {
@@ -33,8 +39,35 @@ impl MaterialTower {
         return BlockType::Air;
     }
 
-    pub fn get_layers_in_range(&self, y_low: Coord, y_high: Coord) -> Vec<(BlockType, Real)> {
-        let layers_in_range = self.data.iter().filter_map(|layer| {
+    pub fn get_size_of_blocks_in_range(&self, y_low: Coord, y_high: Coord) -> Real {
+        let Some(lower) = self.lower_bound else {
+            return 0.0;
+        };
+        let Some(upper) = self.upper_bound else {
+            return 0.0;
+        };
+
+        let blocks_in_range = (upper as Coord) > y_low && (lower as Coord) < y_high;
+        if !blocks_in_range {
+            return 0.0;
+        }
+
+        self.data.iter().fold(0.0, |acc, layer| {
+            let layer_base = layer.base_height as Real;
+            let layer_low = (layer_base).max(y_low as Real);
+            let layer_high = (layer_base + layer.height as Real).min(y_high as Real);
+
+            let layer_size = (layer_high - layer_low).max(0.0);
+            acc + layer_size
+        })
+    }
+
+    pub fn get_layers_in_range(
+        &self,
+        y_low: Coord,
+        y_high: Coord,
+    ) -> impl Iterator<Item = (BlockType, Real)> + '_ {
+        let layers_in_range = self.data.iter().filter_map(move |layer| {
             let layer_low = (layer.base_height as Real).max(y_low as Real);
             let layer_high = (layer.base_height as Real + layer.height as Real).min(y_high as Real);
             let layer_in_range = layer_high > layer_low;
@@ -46,12 +79,21 @@ impl MaterialTower {
             Some((layer.material, new_height))
         });
 
-        return layers_in_range.collect();
+        layers_in_range
+        //return layers_in_range.collect();
     }
 
     pub fn push(&mut self, block: BlockType, base_height: isize) {
         // We do not want to store Air blocks for now
         debug_assert!(block != BlockType::Air);
+        if self.data.is_empty() {
+            self.lower_bound = Some(base_height);
+        }
+
+        self.upper_bound = {
+            let current_bound = self.upper_bound.unwrap_or(base_height);
+            Some(current_bound + 1)
+        };
 
         let extend_top_layer = match self.data.last() {
             Some(layer) => {
