@@ -52,6 +52,12 @@ impl MaterialTower {
             return 0.0;
         }
 
+        // Note: the kernel is small, so only a handful of blocks will contribute anything
+        // here - maybe consider some kind of pruning
+        //
+        // 21.5. Tried getting the starting element through binary search
+        //     to save some iterations, but it made it slower. I guess iterating over
+        //     ~200 elements just isn't that bad?
         self.data.iter().fold(0.0, |acc, layer| {
             let layer_base = layer.base_height as Real;
             let layer_low = (layer_base).max(y_low as Real);
