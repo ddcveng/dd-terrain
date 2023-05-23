@@ -52,7 +52,7 @@ fn main() {
     let mut world = discrete::World::new(config::SPAWN_POINT);
     let (vertex_buffer, indices) = geometry::cube_textured_exclusive_vertex(&display);
     let instance_positions = {
-        let blocks = world.get_block_data();
+        let blocks = world.get_surface_block_data(0, 320);
         glium::vertex::VertexBuffer::new(&display, &blocks).unwrap()
     };
 
@@ -268,10 +268,7 @@ fn get_imgui_builder(
     let fps = state.timing.fps();
     let is_cursor_captured = state.cursor_captured;
     let chunk_position = get_minecraft_chunk_position(position);
-    let block_at_position = match world.get_block(position) {
-        Some(block) => block,
-        None => model::common::BlockType::Air,
-    };
+    let block_at_position = world.get_block(position);
     let render_mode = state.render_mode;
 
     let density = evaluate_density(world, position);

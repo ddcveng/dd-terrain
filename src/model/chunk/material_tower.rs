@@ -1,4 +1,7 @@
-use crate::model::{common::BlockType, Coord, Real};
+use crate::model::{
+    common::{is_visible_block, BlockType},
+    Coord, Real,
+};
 
 const STACK_HEIGHT: usize = 384;
 const NEGATIVE_HEIGHT_PART: isize = 64;
@@ -13,10 +16,6 @@ fn index_to_height(index: usize) -> isize {
 
 fn height_to_index(height: isize) -> usize {
     (height + NEGATIVE_HEIGHT_PART) as usize
-}
-
-fn is_visible_block(material: BlockType) -> bool {
-    !matches!(material, BlockType::Air)
 }
 
 impl MaterialStack {

@@ -5,7 +5,7 @@ use super::ChunkPosition;
 use crate::minecraft;
 use crate::model::common::{get_pallette_texture_coords, BlockType};
 use crate::model::rectangle::Rectangle;
-use crate::model::{Coord, Real};
+use crate::model::{Coord, Position, Real};
 use array_init::array_init;
 use glium::implement_vertex;
 use itertools::Itertools;
@@ -15,8 +15,8 @@ const EPSILON: Coord = 0.0001;
 // Data used for instancing all the blocks
 #[derive(Clone, Copy)]
 pub struct BlockData {
-    offset: [f32; 3],
-    pallette_offset: [f32; 2],
+    pub offset: [f32; 3],
+    pub pallette_offset: [f32; 2],
     //instance_color: [f32; 3],
     //height: u32,
     //block_type: u8,
@@ -137,6 +137,26 @@ impl Chunk {
         let tower = self.get_tower(x, z);
 
         tower.get_block_at_y(y)
+    }
+
+    pub fn enumerate_blocks(
+        &self,
+        y_low: isize,
+        y_high: isize,
+    ) -> impl Iterator<Item = (Position, BlockType)> + '_ {
+        self.data.iter().enumerate().flat_map(move |(i, tower)| {
+            let block_x = (i % CHUNK_SIZE) as Coord;
+            let block_z = (i / CHUNK_SIZE) as Coord;
+
+            tower
+                .iter_visible_blocks()
+                .filter(move |(block_y, _material)| *block_y >= y_low && *block_y < y_high)
+                .map(move |(block_y, material)| {
+                    let position = Position::new(block_x, block_y as Coord, block_z);
+
+                    (position, material)
+                })
+        })
     }
 
     // Intersection is a rectangle local to the chunk - its origin is in chunk local coordinates

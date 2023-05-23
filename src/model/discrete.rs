@@ -9,8 +9,11 @@ use crate::get_minecraft_chunk_position;
 use crate::minecraft;
 
 use super::chunk::{BlockData, Chunk, ChunkPosition};
+use super::common::get_pallette_texture_coords;
+use super::common::is_visible_block;
 use super::common::BlockType;
 use super::implicit::Kernel;
+use super::Coord;
 use super::Position;
 use super::Real;
 
@@ -89,6 +92,14 @@ fn get_iterator(
     }
 }
 
+fn create_block_data(position: Position, material: BlockType) -> BlockData {
+    BlockData {
+        offset: [position.x as f32, position.y as f32, position.z as f32],
+        pallette_offset: get_pallette_texture_coords(material),
+    }
+}
+
+const BLOCK_SIZE: Coord = 1.0;
 const OFFSET_FROM_CENTER: usize = config::WORLD_SIZE / 2;
 
 impl World {
@@ -109,6 +120,45 @@ impl World {
             }),
             center: center_chunk_position,
         }
+    }
+
+    // A block is only visible if there is at least 1 air block
+    // in its neighborhood
+    fn is_position_visible(&self, position: Position) -> bool {
+        let left = Position::new(position.x - BLOCK_SIZE, position.y, position.z);
+        let right = Position::new(position.x + BLOCK_SIZE, position.y, position.z);
+        let up = Position::new(position.x, position.y + BLOCK_SIZE, position.z);
+        let down = Position::new(position.x, position.y - BLOCK_SIZE, position.z);
+        let forward = Position::new(position.x, position.y, position.z - BLOCK_SIZE);
+        let back = Position::new(position.x, position.y, position.z + BLOCK_SIZE);
+
+        let neighbors = [left, right, up, down, forward, back];
+        return neighbors
+            .into_iter()
+            .any(|pos| !is_visible_block(self.get_block(pos))); // @Speed
+    }
+
+    pub fn get_surface_block_data(&self, y_low: isize, y_high: isize) -> Vec<BlockData> {
+        self.chunks
+            .iter()
+            .flat_map(|chunk| {
+                let chunk_offset = chunk.position.get_global_position();
+
+                chunk
+                    .enumerate_blocks(y_low, y_high)
+                    .map(move |(relative_position, material)| {
+                        let position = Position::new(
+                            relative_position.x + chunk_offset.x as Coord,
+                            relative_position.y,
+                            relative_position.z + chunk_offset.y as Coord,
+                        );
+
+                        (position, material)
+                    })
+                    .filter(|(position, _)| self.is_position_visible(*position))
+                    .map(move |(position, material)| create_block_data(position, material))
+            })
+            .collect()
     }
 
     pub fn get_block_data(&self) -> Vec<BlockData> {
@@ -168,7 +218,7 @@ impl World {
         return true;
     }
 
-    pub fn get_block(&self, position: Position) -> Option<BlockType> {
+    pub fn get_block(&self, position: Position) -> BlockType {
         let chunk_position = get_minecraft_chunk_position(position);
         let chunk = self
             .chunks
@@ -176,11 +226,11 @@ impl World {
             .find(|chunk| chunk.position == chunk_position);
 
         let Some(chunk) = chunk else {
-            return None
+            return BlockType::Air;
         };
 
         let (block_x, block_z) = Chunk::get_block_coords(position.x, position.z);
-        Some(chunk.get_block(block_x, position.y.floor() as isize, block_z))
+        chunk.get_block(block_x, position.y.floor() as isize, block_z)
     }
 
     pub fn sample_volume(&self, kernel: Kernel) -> Real {

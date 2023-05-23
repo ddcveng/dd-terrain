@@ -38,3 +38,7 @@ pub fn get_block_color(block_type: BlockType) -> [f32; 3] {
         _ => [1.0, 0.0, 0.0],
     }
 }
+
+pub fn is_visible_block(material: BlockType) -> bool {
+    !matches!(material, BlockType::Air)
+}
