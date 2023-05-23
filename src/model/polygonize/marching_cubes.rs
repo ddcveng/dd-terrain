@@ -49,28 +49,7 @@ type IntersectionVertexMap = Vec<Option<u32>>;
 pub fn polygonize(support: Rectangle3D, density_func: impl Fn(Position) -> Real) -> Mesh {
     let grid = Grid::new(support, &density_func);
     let intersections = find_intersections(&grid);
-    //let index = grid.get_index_for(GridPosition::new(1, 2, 0));
-    //    println!("intersections: {}", intersections.len());
-    //    println!(
-    //        "1, 2, 0 is at index {} edges {:?} {:?} {:?}",
-    //        index,
-    //        intersections[index],
-    //        intersections[index + 1],
-    //        intersections[index + 2]
-    //    );
-
     let (vertices, vertex_mapping) = build_mesh_vertices(&intersections, &density_func);
-    //    println!(
-    //        "mesh vertices: {}, map length: {}, map some: {}, matches: {}",
-    //        vertices.len(),
-    //        vertex_mapping.len(),
-    //        vertex_mapping.iter().filter(|x| x.is_some()).count(),
-    //        vertex_mapping
-    //            .iter()
-    //            .enumerate()
-    //            .all(|(i, x)| x.is_some() == intersections[i].is_some()),
-    //    );
-
     let indices = assemble_triangles(&grid, &vertex_mapping);
 
     Mesh { vertices, indices }
@@ -248,7 +227,18 @@ fn get_edge_end(grid: &Grid, edge_start: GridPosition, edge_index: u16) -> Optio
 
 // TODO: interpolate points based on density
 fn get_intersection(edge_start: GridPoint, edge_end: GridPoint) -> Intersection {
-    return Some(edge_start.position.midpoint(edge_end.position));
+    let start_density = edge_start.density;
+    let end_density = edge_end.density;
+
+    let intersection = edge_start
+        .position
+        .zip(edge_end.position, |start_coord, end_coord| {
+            start_coord
+                + (SURFACE_LEVEL - start_density) * (end_coord - start_coord)
+                    / (end_density - start_density)
+        });
+
+    Some(intersection)
 }
 
 const CUBE_VERTICES: u16 = 8;

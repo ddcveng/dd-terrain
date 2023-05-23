@@ -17,6 +17,7 @@ uniform mat4 model;
 // out vec3 frag_color;
 out vec3 v_normal;
 out vec2 texture_uv;
+out vec3 fragment_position;
 
 void main() {  
     // frag_color = instance_color;
@@ -36,6 +37,7 @@ void main() {
     //scale[3] = scale_offset;
 
     vec3 real_position = position + scale_offset.xyz;
+    fragment_position = vec3(model * vec4(real_position, 1.));
     gl_Position = projection * view * model * vec4(real_position, 1.);
 }
 
