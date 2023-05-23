@@ -180,7 +180,7 @@ impl World {
         };
 
         let (block_x, block_z) = Chunk::get_block_coords(position.x, position.z);
-        Some(chunk.get_block(block_x, position.y as isize, block_z))
+        Some(chunk.get_block(block_x, position.y.floor() as isize, block_z))
     }
 
     pub fn sample_volume(&self, kernel: Kernel) -> Real {
