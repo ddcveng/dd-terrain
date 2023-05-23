@@ -13,3 +13,11 @@ pub struct Vertex {
     pub normal: [f32; 3],
 }
 implement_vertex!(Vertex, position, color, normal);
+
+#[derive(Clone, Copy)]
+pub struct TexturedVertex {
+    pub position: [f32; 3],
+    pub normal: [f32; 3],
+    pub texture_coordinates: [f32; 2],
+}
+implement_vertex!(TexturedVertex, position, normal, texture_coordinates);

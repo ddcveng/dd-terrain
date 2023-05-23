@@ -1,5 +1,6 @@
 pub mod input;
 pub mod render_fragment;
+pub mod texture;
 pub mod vertex;
 
 mod render_state;

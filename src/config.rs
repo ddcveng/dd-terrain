@@ -2,6 +2,8 @@ use crate::model::{Position, Real};
 use cgmath::{Point3, Rad};
 
 pub const TITLE: &str = "dd-terrain";
+pub const ASSETS_PATH: &str = r#"/home/ddcveng/projects/dd-terrain/assets"#;
+pub const DYNAMIC_WORLD: bool = false;
 
 pub const FOVY: Rad<Real> = Rad(std::f64::consts::FRAC_PI_2);
 pub const Z_NEAR: Real = 0.1;

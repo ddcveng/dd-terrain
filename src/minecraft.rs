@@ -101,8 +101,22 @@ pub fn get_block_type(block_id: &str) -> BlockType {
         "minecraft:grass_block" => BlockType::Grass,
         "minecraft:air" => BlockType::Air,
         "minecraft:sand" => BlockType::Sand,
-        _ => BlockType::Unknown,
+        _ => get_block_type_nonspecific(block_id),
     }
+}
+
+pub fn get_block_type_nonspecific(block_id: &str) -> BlockType {
+    let is_ore = block_id.contains("ore");
+    if is_ore {
+        return BlockType::Ore;
+    }
+
+    let is_wood = block_id.contains("log");
+    if is_wood {
+        return BlockType::Wood;
+    }
+
+    return BlockType::Unknown;
 }
 
 // negative regions are indexed shifted by 1 to differentiate between positive and negative zeros

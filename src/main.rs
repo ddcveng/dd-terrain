@@ -1,7 +1,7 @@
 use glium::glutin::event::{Event, WindowEvent};
 use glium::glutin::event_loop::{ControlFlow, EventLoop};
 use glium::index::IndicesSource;
-use glium::{uniform, Display, Frame, IndexBuffer, Surface};
+use glium::{uniform, Display, Frame, IndexBuffer, Surface, Texture2d};
 
 use glium::glutin::event::VirtualKeyCode;
 use glium::glutin::window::CursorGrabMode;
@@ -23,6 +23,7 @@ mod geometry;
 mod infrastructure;
 use infrastructure::input::{self, InputAction, InputConsumer};
 use infrastructure::render_fragment::RenderFragmentBuilder;
+use infrastructure::texture::texture_loader::texture_from_file;
 use infrastructure::{RenderState, RenderingMode};
 use minecraft::get_minecraft_chunk_position;
 
@@ -46,8 +47,10 @@ const IMPLICIT_FS: &str = include_str!("shaders/implicit_fs.glsl");
 fn main() {
     let (event_loop, display) = create_window();
 
+    let texture = texture_from_file("block-palette.png", &display);
+
     let mut world = discrete::World::new(config::SPAWN_POINT);
-    let (vertex_buffer, indices) = geometry::cube_color_exclusive_vertex(&display);
+    let (vertex_buffer, indices) = geometry::cube_textured_exclusive_vertex(&display);
     let instance_positions = {
         let blocks = world.get_block_data();
         glium::vertex::VertexBuffer::new(&display, &blocks).unwrap()
@@ -98,7 +101,7 @@ fn main() {
             }
 
             camera.update(render_state.timing.delta_time.as_secs_f64());
-            let update_geometry = false; //world.update(camera.get_position());
+            let update_geometry = config::DYNAMIC_WORLD && world.update(camera.get_position());
             if update_geometry {
                 let instance_positions = {
                     let blocks = world.get_block_data();
@@ -120,12 +123,22 @@ fn main() {
 
             // Draw Scene
             match render_state.render_mode {
-                RenderingMode::Discrete => {
-                    render_world(&discrete_scene, &mut target, &camera, &render_state)
-                }
+                RenderingMode::Discrete => render_world(
+                    &discrete_scene,
+                    &mut target,
+                    &camera,
+                    &render_state,
+                    &texture,
+                ),
                 RenderingMode::Implicit => {
                     let implicit_scene = create_implicit_scene(&world, &display);
-                    render_world(&implicit_scene, &mut target, &camera, &render_state);
+                    render_world(
+                        &implicit_scene,
+                        &mut target,
+                        &camera,
+                        &render_state,
+                        &texture,
+                    );
                 }
             }
 
@@ -203,6 +216,7 @@ fn render_world<'a, D, T, I>(
     target: &mut Frame,
     camera: &Camera,
     state: &RenderState,
+    texture: &Texture2d,
 ) -> ()
 where
     D: Copy,
@@ -217,6 +231,7 @@ where
         projection: projection,
         view: view,
         model: model,
+        block_pallette: texture.sampled().magnify_filter(glium::uniforms::MagnifySamplerFilter::Nearest),
     };
 
     let polygon_mode = match state.render_wireframe {
