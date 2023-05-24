@@ -36,20 +36,21 @@ where
         &'a self,
         target: &mut glium::Frame,
         uniforms: &U,
-        draw_parameters: Option<glium::DrawParameters>
-    ) 
-    where U: Uniforms,
+        draw_parameters: Option<glium::DrawParameters>,
+    ) where
+        U: Uniforms,
     {
         let params = draw_parameters.unwrap_or_else(|| Self::default_draw_parameters());
 
-        target.draw(
-            &self.vertex_buffer,
-            &self.indices, 
-            &self.program, 
-            uniforms, 
-            &params
-        )
-        .unwrap();
+        target
+            .draw(
+                &self.vertex_buffer,
+                &self.indices,
+                &self.program,
+                uniforms,
+                &params,
+            )
+            .unwrap();
     }
 
     pub fn render_instanced<U, D>(
@@ -57,8 +58,8 @@ where
         target: &mut glium::Frame,
         uniforms: &U,
         instance_data: &VertexBuffer<D>,
-        draw_parameters: Option<glium::DrawParameters>) 
-    where 
+        draw_parameters: Option<glium::DrawParameters>,
+    ) where
         U: Uniforms,
         D: Copy,
     {
@@ -81,7 +82,7 @@ where
             polygon_mode: glium::PolygonMode::Fill,
             depth: glium::Depth {
                 test: glium::DepthTest::IfLess,
-                write: true, 
+                write: true,
                 ..Default::default()
             },
             ..Default::default()
@@ -91,7 +92,7 @@ where
 
 // TODO: add marker type to represent build state so invalid state
 // is not representable
-pub struct RenderFragmentBuilder<'a, T, I/*, U*/>
+pub struct RenderFragmentBuilder<'a, T, I /*, U*/>
 where
     T: Copy,
     I: 'a,
@@ -106,7 +107,7 @@ where
     //uniforms: Option<UniformsStorage<'a, U, EmptyUniforms>>,
 }
 
-impl<'a, T, I/*, U*/> RenderFragmentBuilder<'a, T, I/*, U*/>
+impl<'a, T, I /*, U*/> RenderFragmentBuilder<'a, T, I /*, U*/>
 where
     T: Copy,
     I: 'a,
@@ -149,11 +150,11 @@ where
         self
     }
 
-//    pub fn set_uniforms(mut self, uniforms: UniformsStorage<'a, U, EmptyUniforms>) -> Self {
-//        self.uniforms = Some(uniforms);
-//
-//        self
-//    }
+    //    pub fn set_uniforms(mut self, uniforms: UniformsStorage<'a, U, EmptyUniforms>) -> Self {
+    //        self.uniforms = Some(uniforms);
+    //
+    //        self
+    //    }
 
     pub fn build(
         self,
@@ -163,16 +164,14 @@ where
             .vertex_buffer
             .ok_or(FragmentCreationError::NoGeometry)?;
         let indices = self.indices.ok_or(FragmentCreationError::NoGeometry)?;
-        println!("1");
 
         let vertex_shader_source = self
             .vertex_shader_source
             .ok_or(FragmentCreationError::NoGeometry)?;
-        println!("2");
+
         let fragment_shader_source = self
             .fragment_shader_source
             .ok_or(FragmentCreationError::NoGeometry)?;
-        println!("3");
 
         let program_x = Program::from_source(
             display,
@@ -180,9 +179,6 @@ where
             fragment_shader_source,
             self.geometry_shader_source,
         );
-
-        println!("{:?}", program_x);
-        println!("4");
 
         let program = program_x.or(Err(FragmentCreationError::NoGeometry))?;
 

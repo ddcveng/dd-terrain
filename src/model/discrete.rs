@@ -127,8 +127,8 @@ impl World {
     fn is_position_visible(&self, position: Position) -> bool {
         let left = Position::new(position.x - BLOCK_SIZE, position.y, position.z);
         let right = Position::new(position.x + BLOCK_SIZE, position.y, position.z);
-        let up = Position::new(position.x, position.y + BLOCK_SIZE, position.z);
         let down = Position::new(position.x, position.y - BLOCK_SIZE, position.z);
+        let up = Position::new(position.x, position.y + BLOCK_SIZE, position.z);
         let forward = Position::new(position.x, position.y, position.z - BLOCK_SIZE);
         let back = Position::new(position.x, position.y, position.z + BLOCK_SIZE);
 
@@ -143,6 +143,7 @@ impl World {
             .iter()
             .flat_map(|chunk| {
                 let chunk_offset = chunk.position.get_global_position();
+                println!("pos {:?} offset {:?}", chunk.position, chunk_offset);
 
                 chunk
                     .enumerate_blocks(y_low, y_high)
