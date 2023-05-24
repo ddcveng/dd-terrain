@@ -1,10 +1,10 @@
-use cgmath::{EuclideanSpace, InnerSpace, Point3};
+use cgmath::{InnerSpace, Point3};
 use glium::implement_vertex;
 
 use crate::model::{implicit, Position, Real};
 
 // The jump in quality between 1.0 and 0.9 is insane!
-const CELL_SIZE: Real = 1.0;
+const CELL_SIZE: Real = 0.9;
 const SURFACE_LEVEL: Real = 0.0;
 
 pub struct Mesh {

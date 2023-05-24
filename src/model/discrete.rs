@@ -143,7 +143,7 @@ impl World {
             .iter()
             .flat_map(|chunk| {
                 let chunk_offset = chunk.position.get_global_position();
-                println!("pos {:?} offset {:?}", chunk.position, chunk_offset);
+                // println!("pos {:?} offset {:?}", chunk.position, chunk_offset);
 
                 chunk
                     .enumerate_blocks(y_low, y_high)

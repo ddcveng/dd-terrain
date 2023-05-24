@@ -172,8 +172,8 @@ fn to_uniform_matrix(matrix: &Matrix4<Real>) -> [[f32; 4]; 4] {
 
 fn polygonize(world: &discrete::World) -> Mesh {
     let xz_position = PlanarPosition::new(194.0, 175.0);
-    let support_size = 20.0;
-    let pos = Position::new(xz_position.x, 63.0, xz_position.y);
+    let support_size = 40.0;
+    let pos = Position::new(xz_position.x, 50.0, xz_position.y);
     //    println!("-----------------------------------");
     //    println!("Polygonizing grid from position {pos:?} with size {support_size}");
 
