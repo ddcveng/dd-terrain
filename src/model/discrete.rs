@@ -6,6 +6,7 @@ use std::cmp::min;
 use crate::config;
 use crate::config::WORLD_SIZE;
 use crate::get_minecraft_chunk_position;
+use crate::infrastructure::texture::MaterialBlend;
 use crate::minecraft;
 
 use super::chunk::{BlockData, Chunk, ChunkPosition};
@@ -252,5 +253,27 @@ impl World {
 
             acc + chunk_volume
         })
+    }
+
+    pub fn sample_materials(&self, kernel: Kernel) -> MaterialBlend {
+        let kernel_box = kernel.get_bounding_rectangle();
+        let y_low = kernel.y_low();
+        let y_high = kernel.y_high();
+
+        self.chunks
+            .iter()
+            .fold(MaterialBlend::new(), |mut blend, chunk| {
+                let chunk_box = chunk.get_bounding_rectangle();
+                let Some(intersection) = chunk_box.intersect(kernel_box) else {
+                    return blend;
+                };
+
+                let offset = chunk.position.get_global_position().map(|coord| -coord);
+                let intersection_local = intersection.offset_origin(offset);
+                let chunk_volume = chunk.get_material_blend(intersection_local, y_low, y_high);
+
+                blend.merge(chunk_volume);
+                blend
+            })
     }
 }

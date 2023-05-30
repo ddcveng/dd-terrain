@@ -10,6 +10,7 @@ use glium::VertexBuffer;
 #[derive(Debug)]
 pub enum FragmentCreationError {
     NoGeometry,
+    BadVertexShader,
 }
 
 // TODO: implement custom Uniforms type so I can manage it dynamically
@@ -180,7 +181,7 @@ where
             self.geometry_shader_source,
         );
 
-        let program = program_x.or(Err(FragmentCreationError::NoGeometry))?;
+        let program = program_x.unwrap();
 
         Ok(RenderFragment {
             vertex_buffer,

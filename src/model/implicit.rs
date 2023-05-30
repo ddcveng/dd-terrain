@@ -2,6 +2,7 @@ use cgmath::Point3;
 use cgmath::Vector3;
 
 use crate::discrete::World;
+use crate::infrastructure::texture::MaterialBlend;
 
 use super::rectangle::Rectangle;
 use super::Coord;
@@ -9,40 +10,54 @@ use super::PlanarPosition;
 use super::Position;
 use super::Real;
 
-// Radius of the cube used as the convolution kernel
-const SIGMA: Coord = 1.0;
-const KERNEL_VOLUME: Real = 8.0 * SIGMA * SIGMA * SIGMA;
+// Radius of the cube used as the convolution kernel used for density evaluation
+const DENSITY_SIGMA: Coord = 1.0;
+const KERNEL_VOLUME: Real = 8.0 * DENSITY_SIGMA * DENSITY_SIGMA * DENSITY_SIGMA;
 const KERNEL_VOLUME_HALF: Real = KERNEL_VOLUME / 2.0;
 const EPSILON: Real = 0.0001;
 
-pub const KERNEL_SIZE: Coord = 2.0 * SIGMA;
+// The smoothing process shrinks the world down a little
+// so the material kernel shouldn't be much smaller than the density kernel.
+// Otherwise artefacts may show up for places where the material kernel did not find
+// any intersecting blocks
+const MATERIAL_SIGMA: Coord = 0.7;
 
 #[derive(Copy, Clone)]
 pub struct Kernel {
-    pub position: Position,
+    position: Position,
+    radius: Coord,
 }
 
 impl Kernel {
+    pub fn new(position: Position, radius: Coord) -> Self {
+        Kernel { position, radius }
+    }
+
     pub fn get_bounding_rectangle(&self) -> Rectangle {
         let origin = PlanarPosition {
-            x: self.position.x - SIGMA,
-            y: self.position.z - SIGMA,
+            x: self.position.x - self.radius,
+            y: self.position.z - self.radius,
         };
 
-        Rectangle::square(origin, KERNEL_SIZE)
+        Rectangle::square(origin, 2.0 * self.radius)
     }
 
     pub fn y_low(&self) -> Real {
-        self.position.y - SIGMA
+        self.position.y - self.radius
     }
 
     pub fn y_high(&self) -> Real {
-        self.position.y + SIGMA
+        self.position.y + self.radius
     }
 }
 
+pub fn sample_materials(model: &World, point: Position) -> MaterialBlend {
+    let kernel = Kernel::new(point, MATERIAL_SIGMA);
+    return model.sample_materials(kernel);
+}
+
 pub fn evaluate_density(model: &World, point: Position) -> Real {
-    let kernel = Kernel { position: point };
+    let kernel = Kernel::new(point, DENSITY_SIGMA);
     return evaluate_density_inner(model, kernel);
 }
 

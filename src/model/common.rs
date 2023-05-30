@@ -1,4 +1,6 @@
 // TODO: is 1 byte for block type enough?
+// Note: Unknown must always be the last variant,
+// or at least the variant with the largest value.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum BlockType {
     Air = 0,
@@ -8,8 +10,10 @@ pub enum BlockType {
     Wood = 4,
     Sand = 5,
     Ore = 6,
-    Unknown = 255,
+    Unknown = 7,
 }
+
+pub const BLOCK_TYPES: usize = (BlockType::Unknown as usize) + 1;
 
 const PALLETTE_SIZE: usize = 4;
 pub const BLOCK_TEXTURE_FRACTION: f32 = 1.0 / (PALLETTE_SIZE as f32);
@@ -35,6 +39,7 @@ pub fn get_block_color(block_type: BlockType) -> [f32; 3] {
         BlockType::Dirt => [0.36, 0.09, 0.05],
         BlockType::Stone => [0.6, 0.6, 0.6],
         BlockType::Sand => [0.76, 0.69, 0.5],
+        BlockType::Ore => [0.2, 0.2, 0.2],
         _ => [1.0, 0.0, 0.0],
     }
 }

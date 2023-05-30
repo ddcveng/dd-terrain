@@ -1,10 +1,13 @@
 use cgmath::{InnerSpace, Point3};
 use glium::implement_vertex;
 
-use crate::model::{implicit, Position, Real};
+use crate::{
+    infrastructure::texture::MaterialBlend,
+    model::{implicit, Position, Real},
+};
 
 // The jump in quality between 1.0 and 0.9 is insane!
-const CELL_SIZE: Real = 0.9;
+const CELL_SIZE: Real = 0.8;
 const SURFACE_LEVEL: Real = 0.0;
 
 pub struct Mesh {
@@ -46,10 +49,15 @@ type IntersectionContainer = Vec<Intersection>;
 type IntersectionVertexMap = Vec<Option<u32>>;
 
 // Driver function, returns vertex+index buffer and dispatches work
-pub fn polygonize(support: Rectangle3D, density_func: impl Fn(Position) -> Real) -> Mesh {
+pub fn polygonize(
+    support: Rectangle3D,
+    density_func: impl Fn(Position) -> Real,
+    material_func: impl Fn(Position) -> MaterialBlend,
+) -> Mesh {
     let grid = Grid::new(support, &density_func);
     let intersections = find_intersections(&grid);
-    let (vertices, vertex_mapping) = build_mesh_vertices(&intersections, &density_func);
+    let (vertices, vertex_mapping) =
+        build_mesh_vertices(&intersections, &density_func, &material_func);
     let indices = assemble_triangles(&grid, &vertex_mapping);
 
     Mesh { vertices, indices }
@@ -64,12 +72,17 @@ pub fn polygonize(support: Rectangle3D, density_func: impl Fn(Position) -> Real)
 fn build_mesh_vertices(
     intersections: &IntersectionContainer,
     density_func: &impl Fn(Position) -> Real,
+    material_func: &impl Fn(Position) -> MaterialBlend,
 ) -> (Vec<MeshVertex>, IntersectionVertexMap) {
     let build_vertex = |p| {
         let normal = -implicit::gradient_fast(density_func, p).normalize();
+        let blend = material_func(p);
+        let (weights, indices) = blend.into_material_weights();
         MeshVertex {
             position: [p.x as f32, p.y as f32, p.z as f32],
             normal: [normal.x as f32, normal.y as f32, normal.z as f32],
+            blend_coefficients: weights,
+            blend_indices: indices,
         }
     };
 
@@ -369,8 +382,16 @@ pub struct Rectangle3D {
 pub struct MeshVertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
+    pub blend_coefficients: [f32; 4],
+    pub blend_indices: [u8; 4],
 }
-implement_vertex!(MeshVertex, position, normal);
+implement_vertex!(
+    MeshVertex,
+    position,
+    normal,
+    blend_coefficients,
+    blend_indices
+);
 
 const CASES: usize = 256;
 const EDGES_LOOKUP: [u16; CASES] = [

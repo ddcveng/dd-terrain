@@ -185,7 +185,9 @@ fn polygonize(world: &discrete::World) -> Mesh {
     };
 
     let density_func = |p| model::implicit::evaluate_density(world, p);
-    model::polygonize::polygonize(density_func, support)
+    let material_func = |p| model::implicit::sample_materials(world, p);
+
+    model::polygonize::polygonize(support, density_func, material_func)
 }
 
 fn create_implicit_scene<'a>(
@@ -307,6 +309,12 @@ fn get_imgui_builder(
                 ui.text(format!(
                     "gradient: {:.2} {:.2} {:.2}",
                     gradient.x, gradient.y, gradient.z
+                ));
+                ui.text(format!(
+                    "tex coords: {:.2} {:.2} {:.2}",
+                    position.x.abs() % 1.0,
+                    position.y.abs() % 1.0,
+                    position.z.abs() % 1.0
                 ));
             });
     };

@@ -3,6 +3,7 @@ use crate::model::{
     Coord, Real,
 };
 
+const BLOCK_SIZE: Real = 1.0;
 const STACK_HEIGHT: usize = 384;
 const NEGATIVE_HEIGHT_PART: isize = 64;
 // Contains blocks from y = -64 to y = 320 in ascending order
@@ -66,6 +67,43 @@ impl MaterialStack {
 
         assert!(intersection_size > 0.0);
         intersection_size
+    }
+
+    pub fn iter_intersecting_blocks(
+        &self,
+        y_low: Coord,
+        y_high: Coord,
+    ) -> impl Iterator<Item = (Real, BlockType)> + '_ {
+        let low_floor = y_low.floor();
+        let high_ceil = y_high.ceil();
+        let low_index = height_to_index(low_floor as isize);
+        let high_index = height_to_index(high_ceil as isize);
+
+        let intersecting_blocks = (low_index..high_index)
+            .map(|i| (index_to_height(i), self.blocks[i].clone()))
+            .filter(|(_, material)| is_visible_block(*material));
+
+        let blocks_with_intersection_size =
+            intersecting_blocks.map(move |(base_height, material)| {
+                let base_height = base_height as Coord;
+                let lower_cutoff = if base_height < y_low {
+                    y_low - base_height
+                } else {
+                    0.0
+                };
+
+                let upper_cutoff = if y_high - base_height < BLOCK_SIZE {
+                    y_high - base_height
+                } else {
+                    0.0
+                };
+
+                let intersection_size = BLOCK_SIZE - lower_cutoff - upper_cutoff;
+
+                (intersection_size, material)
+            });
+
+        blocks_with_intersection_size
     }
 
     pub fn iter_visible_blocks(&self) -> impl Iterator<Item = (isize, BlockType)> + '_ {

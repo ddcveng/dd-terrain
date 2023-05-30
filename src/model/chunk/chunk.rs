@@ -2,6 +2,7 @@ use std::cmp::min;
 
 use super::material_tower::MaterialStack;
 use super::ChunkPosition;
+use crate::infrastructure::texture::MaterialBlend;
 use crate::minecraft;
 use crate::model::common::{get_pallette_texture_coords, BlockType};
 use crate::model::rectangle::Rectangle;
@@ -191,6 +192,46 @@ impl Chunk {
 
             let intersection_volume = x_scale * y_scale * z_scale;
             acc + intersection_volume
+        });
+
+        volume
+    }
+
+    pub fn get_material_blend(
+        &self,
+        intersection_xz: Rectangle,
+        y_low: Coord,
+        y_high: Coord,
+    ) -> MaterialBlend {
+        let intersection_start_index_x = get_block_coord(intersection_xz.left());
+        let intersection_start_index_z = get_block_coord(intersection_xz.bottom());
+
+        let intersection_end_index_x = min(
+            minecraft::BLOCKS_IN_CHUNK,
+            (intersection_xz.right() - EPSILON).ceil() as usize,
+        );
+        let intersection_end_index_z = min(
+            minecraft::BLOCKS_IN_CHUNK,
+            (intersection_xz.top() - EPSILON).ceil() as usize,
+        );
+
+        // Iterate over blocks that are intersected
+        let intersection_range = (intersection_start_index_x..intersection_end_index_x)
+            .cartesian_product(intersection_start_index_z..intersection_end_index_z);
+
+        let volume = intersection_range.fold(MaterialBlend::new(), move |mut blend, (x, z)| {
+            let x_scale =
+                get_block_portion_in_range(x, intersection_xz.left(), intersection_xz.right());
+            let z_scale =
+                get_block_portion_in_range(z, intersection_xz.bottom(), intersection_xz.top());
+
+            let tower = self.get_tower(x, z);
+            for (y_scale, material) in tower.iter_intersecting_blocks(y_low, y_high) {
+                let block_intersection_size = x_scale * y_scale * z_scale;
+                blend.mix(material, block_intersection_size);
+            }
+
+            blend
         });
 
         volume
