@@ -1,124 +1,121 @@
-use crate::model::{common::BlockType, Coord, Real};
+use crate::model::{
+    common::{is_visible_block, BlockType},
+    Coord, Real,
+};
 
-#[derive(Clone, Copy)]
-pub struct MaterialLayer {
-    pub material: BlockType,
-    pub height: u32,
-    pub base_height: isize,
+const BLOCK_SIZE: Real = 1.0;
+const STACK_HEIGHT: usize = 384;
+const NEGATIVE_HEIGHT_PART: isize = 64;
+// Contains blocks from y = -64 to y = 320 in ascending order
+pub struct MaterialStack {
+    blocks: Vec<BlockType>,
 }
 
-// Stores continuous layers of blocks,
-// there can be gaps of air between layers, these are not stored.
-//
-// Block layers are ordered from lowest to highest y coordinate
-pub struct MaterialTower {
-    pub data: Vec<MaterialLayer>,
-    lower_bound: Option<isize>,
-    upper_bound: Option<isize>,
+fn index_to_height(index: usize) -> isize {
+    (index as isize) - NEGATIVE_HEIGHT_PART
 }
 
-impl MaterialTower {
+fn height_to_index(height: isize) -> usize {
+    (height + NEGATIVE_HEIGHT_PART) as usize
+}
+
+impl MaterialStack {
     pub fn new() -> Self {
-        MaterialTower {
-            data: Vec::new(),
-            lower_bound: None,
-            upper_bound: None,
+        let mut data: Vec<BlockType> = Vec::with_capacity(STACK_HEIGHT);
+        data.resize(STACK_HEIGHT, BlockType::Air);
+
+        MaterialStack { blocks: data }
+    }
+
+    pub fn insert(&mut self, material: BlockType, base_height: isize) {
+        let stack_index = height_to_index(base_height);
+        //println!("height: {base_height} -> index: {stack_index}");
+        self.blocks[stack_index] = material;
+    }
+
+    pub fn get_intersection_size(&self, y_low: Coord, y_high: Coord) -> Real {
+        let low_floor = y_low.floor();
+        let high_ceil = y_high.ceil();
+        let low_index = height_to_index(low_floor as isize);
+        let high_index = height_to_index(high_ceil as isize);
+
+        let blocks_in_range = (low_index..high_index)
+            .map(|i| self.blocks[i])
+            .filter(|material| is_visible_block(*material))
+            .count();
+
+        if blocks_in_range == 0 {
+            return 0.0;
         }
+
+        let excess_low = {
+            let cutoff = is_visible_block(self.blocks[low_index]);
+            match cutoff {
+                true => (y_low - low_floor) as Real,
+                false => 0.0,
+            }
+        };
+        let excess_high = {
+            let cutoff = is_visible_block(self.blocks[high_index - 1]);
+            match cutoff {
+                true => (high_ceil - y_high) as Real,
+                false => 0.0,
+            }
+        };
+
+        let intersection_size = (blocks_in_range as Real) - excess_low - excess_high;
+
+        assert!(intersection_size > 0.0);
+        intersection_size
+    }
+
+    pub fn iter_intersecting_blocks(
+        &self,
+        y_low: Coord,
+        y_high: Coord,
+    ) -> impl Iterator<Item = (Real, BlockType)> + '_ {
+        let low_floor = y_low.floor();
+        let high_ceil = y_high.ceil();
+        let low_index = height_to_index(low_floor as isize);
+        let high_index = height_to_index(high_ceil as isize);
+
+        let intersecting_blocks = (low_index..high_index)
+            .map(|i| (index_to_height(i), self.blocks[i].clone()))
+            .filter(|(_, material)| is_visible_block(*material));
+
+        let blocks_with_intersection_size =
+            intersecting_blocks.map(move |(base_height, material)| {
+                let base_height = base_height as Coord;
+                let lower_cutoff = if base_height < y_low {
+                    y_low - base_height
+                } else {
+                    0.0
+                };
+
+                let upper_cutoff = if y_high - base_height < BLOCK_SIZE {
+                    y_high - base_height
+                } else {
+                    0.0
+                };
+
+                let intersection_size = BLOCK_SIZE - lower_cutoff - upper_cutoff;
+
+                (intersection_size, material)
+            });
+
+        blocks_with_intersection_size
+    }
+
+    pub fn iter_visible_blocks(&self) -> impl Iterator<Item = (isize, BlockType)> + '_ {
+        self.blocks
+            .iter()
+            .enumerate()
+            .filter(|(_i, material)| is_visible_block(**material))
+            .map(|(i, material)| (index_to_height(i), material.clone()))
     }
 
     pub fn get_block_at_y(&self, y: isize) -> BlockType {
-        let layer = self.data.iter().find(|layer| {
-            y >= layer.base_height && ((y - layer.base_height) as u32) < layer.height
-        });
-
-        if let Some(layer) = layer {
-            return layer.material;
-        }
-
-        // If there is no block recorded at this height, assume its air
-        return BlockType::Air;
-    }
-
-    pub fn get_size_of_blocks_in_range(&self, y_low: Coord, y_high: Coord) -> Real {
-        let Some(lower) = self.lower_bound else {
-            return 0.0;
-        };
-        let Some(upper) = self.upper_bound else {
-            return 0.0;
-        };
-
-        let blocks_in_range = (upper as Coord) > y_low && (lower as Coord) < y_high;
-        if !blocks_in_range {
-            return 0.0;
-        }
-
-        // Note: the kernel is small, so only a handful of blocks will contribute anything
-        // here - maybe consider some kind of pruning
-        //
-        // 21.5. Tried getting the starting element through binary search
-        //     to save some iterations, but it made it slower. I guess iterating over
-        //     ~200 elements just isn't that bad?
-        self.data.iter().fold(0.0, |acc, layer| {
-            let layer_base = layer.base_height as Real;
-            let layer_low = (layer_base).max(y_low as Real);
-            let layer_high = (layer_base + layer.height as Real).min(y_high as Real);
-
-            let layer_in_range = layer_high > layer_low;
-            if !layer_in_range {
-                return acc;
-            }
-
-            let layer_size = layer_high - layer_low;
-            acc + layer_size
-        })
-    }
-
-    // The block layers are ordered from low y to high y
-    // so lower bound is the base of the first layer
-    // and upper bound is the top of the last layer
-    fn update_bounds(&mut self) {
-        let init_lower_bound = self.lower_bound.is_none() && self.data.len() == 1;
-        if init_lower_bound {
-            self.lower_bound = Some(self.data[0].base_height);
-        }
-
-        let last_element = self
-            .data
-            .last()
-            .expect("There should be a layer present in the tower!");
-        self.upper_bound = Some(last_element.base_height + last_element.height as isize);
-    }
-
-    pub fn push(&mut self, block: BlockType, base_height: isize) {
-        // We do not want to store Air blocks for now
-        debug_assert!(block != BlockType::Air);
-
-        let extend_top_layer = match self.data.last() {
-            Some(layer) => {
-                // Extend the layer if materials match and there is no air gap between the layers
-                layer.material == block
-                    && (layer.base_height + layer.height as isize) == base_height
-            }
-            None => false,
-        };
-
-        if extend_top_layer {
-            // Should always be Some(..) if the check above passed
-            if let Some(top_layer) = self.data.last_mut() {
-                top_layer.height += 1;
-            } else {
-                println!("Something weird is going on..");
-            }
-            return;
-        }
-
-        let segment = MaterialLayer {
-            material: block,
-            height: 1,
-            base_height,
-        };
-
-        self.data.push(segment);
-        self.update_bounds();
+        let block_index = height_to_index(y);
+        self.blocks[block_index]
     }
 }
