@@ -102,6 +102,7 @@ fn main() {
 
             camera.update(render_state.timing.delta_time.as_secs_f64());
             let update_geometry = config::DYNAMIC_WORLD && world.update(camera.get_position());
+
             if update_geometry {
                 let instance_positions = {
                     let blocks = world.get_block_data();
@@ -174,6 +175,7 @@ fn polygonize(world: &discrete::World) -> Mesh {
     let xz_position = PlanarPosition::new(194.0, 175.0);
     let support_size = 40.0;
     let pos = Position::new(xz_position.x, 50.0, xz_position.y);
+
     //    println!("-----------------------------------");
     //    println!("Polygonizing grid from position {pos:?} with size {support_size}");
 
@@ -309,12 +311,6 @@ fn get_imgui_builder(
                 ui.text(format!(
                     "gradient: {:.2} {:.2} {:.2}",
                     gradient.x, gradient.y, gradient.z
-                ));
-                ui.text(format!(
-                    "tex coords: {:.2} {:.2} {:.2}",
-                    position.x.abs() % 1.0,
-                    position.y.abs() % 1.0,
-                    position.z.abs() % 1.0
                 ));
             });
     };

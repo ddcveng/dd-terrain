@@ -7,6 +7,7 @@ use crate::minecraft;
 use crate::model::common::{get_pallette_texture_coords, BlockType};
 use crate::model::rectangle::Rectangle;
 use crate::model::{Coord, Position, Real};
+
 use array_init::array_init;
 use glium::implement_vertex;
 use itertools::Itertools;
@@ -189,6 +190,7 @@ impl Chunk {
             let z_scale =
                 get_block_portion_in_range(z, intersection_xz.bottom(), intersection_xz.top());
             let y_scale = self.get_tower(x, z).get_intersection_size(y_low, y_high);
+
 
             let intersection_volume = x_scale * y_scale * z_scale;
             acc + intersection_volume
