@@ -2,6 +2,7 @@ use crate::model::{
     common::{BlockType, BLOCK_TYPES},
     Real,
 };
+use array_init::array_init;
 
 const EPSILON: f32 = 0.0001;
 
@@ -37,39 +38,54 @@ impl MaterialBlend {
         self.contributed += other.contributed;
     }
 
-    pub fn into_material_weights(self) -> ([f32; 4], [u8; 4]) {
-        let mut weights = [0.0; 4];
-        let mut indices: [u8; 4] = [0; 4];
-
-        for (index, weight) in self.material_contributions.into_iter().enumerate() {
-            let smallest_index = get_index_of_smallest_weight(&weights);
-            if weight > weights[smallest_index] {
-                weights[smallest_index] = weight;
-                indices[smallest_index] = index as u8;
-            }
-        }
-
-        let used_contributions: Real = weights.iter().sum();
-        let missing_contributions = self.contributed - used_contributions;
-
-        let contribution_correction = missing_contributions / 4.0;
-        let weights = array_init::array_init(|i| {
-            ((weights[i] + contribution_correction) / self.contributed) as f32
+    pub fn into_material_weights(self) -> [[f32; 4]; 4] {
+        let weights = array_init(|col| {
+            array_init(|row| {
+                let contribution_index = col * 4 + row;
+                if contribution_index < self.material_contributions.len() {
+                    self.material_contributions[contribution_index] as f32
+                } else {
+                    0.0
+                }
+            })
         });
 
-        debug_assert!(weights
-            .iter()
-            .all(|w| (*w > -EPSILON) && (*w < 1.0 + EPSILON)));
-        debug_assert!(
-            (weights.iter().sum::<f32>() - 1.0).abs() < EPSILON,
-            "Weights do not add up to 1 - {:?} {:?} {}",
-            &weights,
-            &indices,
-            self.contributed
-        );
-
-        (weights, indices)
+        return weights;
     }
+
+    //    pub fn into_material_weights(self) -> ([f32; 4], [u8; 4]) {
+    //        let mut weights = [0.0; 4];
+    //        let mut indices: [u8; 4] = [0; 4];
+    //
+    //        for (index, weight) in self.material_contributions.into_iter().enumerate() {
+    //            let smallest_index = get_index_of_smallest_weight(&weights);
+    //            if weight > weights[smallest_index] {
+    //                weights[smallest_index] = weight;
+    //                indices[smallest_index] = index as u8;
+    //            }
+    //        }
+    //
+    //        let used_contributions: Real = weights.iter().sum();
+    //        let missing_contributions = self.contributed - used_contributions;
+    //
+    //        let contribution_correction = missing_contributions / 4.0;
+    //        let weights = array_init::array_init(|i| {
+    //            ((weights[i] + contribution_correction) / self.contributed) as f32
+    //        });
+    //
+    //        debug_assert!(weights
+    //            .iter()
+    //            .all(|w| (*w > -EPSILON) && (*w < 1.0 + EPSILON)));
+    //        debug_assert!(
+    //            (weights.iter().sum::<f32>() - 1.0).abs() < EPSILON,
+    //            "Weights do not add up to 1 - {:?} {:?} {}",
+    //            &weights,
+    //            &indices,
+    //            self.contributed
+    //        );
+    //
+    //        (weights, indices)
+    //    }
 }
 
 fn get_index_of_smallest_weight(w: &[Real; 4]) -> usize {

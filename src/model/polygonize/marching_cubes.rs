@@ -7,7 +7,7 @@ use crate::{
 };
 
 // The jump in quality between 1.0 and 0.9 is insane!
-const CELL_SIZE: Real = 0.8;
+const CELL_SIZE: Real = 0.5;
 const SURFACE_LEVEL: Real = 0.0;
 
 pub struct Mesh {
@@ -77,12 +77,13 @@ fn build_mesh_vertices(
     let build_vertex = |p| {
         let normal = -implicit::gradient_fast(density_func, p).normalize();
         let blend = material_func(p);
-        let (weights, indices) = blend.into_material_weights();
+        let weights = blend.into_material_weights();
         MeshVertex {
             position: [p.x as f32, p.y as f32, p.z as f32],
             normal: [normal.x as f32, normal.y as f32, normal.z as f32],
-            blend_coefficients: weights,
-            blend_indices: indices,
+            vertex_material_weights: weights,
+            //blend_coefficients: weights,
+            //blend_indices: indices,
         }
     };
 
@@ -382,15 +383,17 @@ pub struct Rectangle3D {
 pub struct MeshVertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
-    pub blend_coefficients: [f32; 4],
-    pub blend_indices: [u8; 4],
+    pub vertex_material_weights: [[f32; 4]; 4],
+    //pub blend_coefficients: [f32; 4],
+    //pub blend_indices: [u8; 4],
 }
 implement_vertex!(
     MeshVertex,
     position,
     normal,
-    blend_coefficients,
-    blend_indices
+    vertex_material_weights,
+    //blend_coefficients,
+    //blend_indices
 );
 
 const CASES: usize = 256;
