@@ -47,3 +47,8 @@ pub fn get_block_color(block_type: BlockType) -> [f32; 3] {
 pub fn is_visible_block(material: BlockType) -> bool {
     !matches!(material, BlockType::Air)
 }
+
+const RIGID_MATERIALS: [BlockType; 1] = [BlockType::Wood];
+pub fn is_rigid_block(material: BlockType) -> bool {
+    RIGID_MATERIALS.contains(&material)
+}

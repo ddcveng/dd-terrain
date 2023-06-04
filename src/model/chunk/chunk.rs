@@ -4,7 +4,7 @@ use super::material_tower::MaterialStack;
 use super::ChunkPosition;
 use crate::infrastructure::texture::MaterialBlend;
 use crate::minecraft;
-use crate::model::common::{get_pallette_texture_coords, BlockType};
+use crate::model::common::{get_pallette_texture_coords, is_rigid_block, BlockType};
 use crate::model::rectangle::Rectangle;
 use crate::model::{Coord, Position, Real};
 
@@ -31,9 +31,17 @@ implement_vertex!(
 
 const CHUNK_SIZE: usize = minecraft::BLOCKS_IN_CHUNK;
 
+#[derive(Clone, Copy)]
+pub struct RigidBlockRecord {
+    position: Position,
+    material: BlockType,
+}
+
 // A chunks is a 16*y*16 region of blocks
 pub struct Chunk {
     data: [MaterialStack; CHUNK_SIZE * CHUNK_SIZE],
+
+    rigid_blocks: Vec<RigidBlockRecord>,
 
     // This is the position of the bottom left corner of the chunk from a top down view
     pub position: ChunkPosition,
@@ -84,6 +92,7 @@ impl Chunk {
     pub fn new(chunk_position: ChunkPosition) -> Self {
         Chunk {
             data: array_init(|_inx| MaterialStack::new()),
+            rigid_blocks: Vec::new(),
             position: chunk_position,
         }
     }
@@ -100,6 +109,17 @@ impl Chunk {
     pub fn push_block(&mut self, x: usize, z: usize, base_height: isize, block: BlockType) {
         let stack = self.get_tower_mut(x, z);
         stack.insert(block, base_height);
+
+        // update rigid block records
+        if is_rigid_block(block) {
+            let position = Position::new(x as f64, base_height as f64, z as f64);
+            let rigid_record = RigidBlockRecord {
+                position,
+                material: block,
+            };
+
+            self.rigid_blocks.push(rigid_record);
+        }
     }
 
     pub fn get_block_data(&self) -> Vec<BlockData> {
@@ -190,7 +210,6 @@ impl Chunk {
             let z_scale =
                 get_block_portion_in_range(z, intersection_xz.bottom(), intersection_xz.top());
             let y_scale = self.get_tower(x, z).get_intersection_size(y_low, y_high);
-
 
             let intersection_volume = x_scale * y_scale * z_scale;
             acc + intersection_volume
