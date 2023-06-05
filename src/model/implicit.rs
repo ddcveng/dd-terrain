@@ -11,7 +11,7 @@ use super::Position;
 use super::Real;
 
 // Radius of the cube used as the convolution kernel used for density evaluation
-const DENSITY_SIGMA: Coord = 1.0;
+const DENSITY_SIGMA: Coord = 0.8;
 const KERNEL_VOLUME: Real = 8.0 * DENSITY_SIGMA * DENSITY_SIGMA * DENSITY_SIGMA;
 const KERNEL_VOLUME_HALF: Real = KERNEL_VOLUME / 2.0;
 const EPSILON: Real = 0.0001;
@@ -20,7 +20,7 @@ const EPSILON: Real = 0.0001;
 // so the material kernel shouldn't be much smaller than the density kernel.
 // Otherwise artefacts may show up for places where the material kernel did not find
 // any intersecting blocks
-const MATERIAL_SIGMA: Coord = 0.7;
+const MATERIAL_SIGMA: Coord = 0.6;
 
 #[derive(Copy, Clone)]
 pub struct Kernel {

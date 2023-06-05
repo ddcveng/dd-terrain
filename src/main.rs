@@ -55,6 +55,10 @@ fn main() {
         let blocks = world.get_surface_block_data(0, 320);
         glium::vertex::VertexBuffer::new(&display, &blocks).unwrap()
     };
+    let rigid_blocks_instance_data = {
+        let data = world.get_rigid_blocks_data();
+        glium::vertex::VertexBuffer::new(&display, &data).unwrap()
+    };
 
     let cube_fragment = RenderFragmentBuilder::new()
         .set_geometry(vertex_buffer, indices)
@@ -64,6 +68,15 @@ fn main() {
         .unwrap();
 
     let mut discrete_scene = Scene::new_instanced(cube_fragment, instance_positions);
+
+    let (vertex_buffer, indices) = geometry::cube_textured_exclusive_vertex(&display);
+    let cube_fragment2 = RenderFragmentBuilder::new()
+        .set_geometry(vertex_buffer, indices)
+        .set_vertex_shader(DISCRETE_VS)
+        .set_fragment_shader(DISCRETE_FS)
+        .build(&display)
+        .unwrap();
+    let mut rigid_blocks_scene = Scene::new_instanced(cube_fragment2, rigid_blocks_instance_data);
 
     let mut imgui_data = ImguiWrapper::new(&display);
     let dimensions = display.get_framebuffer_dimensions();
@@ -135,6 +148,13 @@ fn main() {
                     let implicit_scene = create_implicit_scene(&world, &display);
                     render_world(
                         &implicit_scene,
+                        &mut target,
+                        &camera,
+                        &render_state,
+                        &texture,
+                    );
+                    render_world(
+                        &rigid_blocks_scene,
                         &mut target,
                         &camera,
                         &render_state,

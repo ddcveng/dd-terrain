@@ -148,6 +148,28 @@ impl Chunk {
         blocks
     }
 
+    pub fn get_rigid_block_data(&self) -> Vec<BlockData> {
+        let (chunk_global_x, chunk_global_z) = self.position.get_global_position_in_chunks();
+        let global_offset_blocks_x = chunk_global_x * (minecraft::BLOCKS_IN_CHUNK as i32);
+        let global_offset_blocks_z = chunk_global_z * (minecraft::BLOCKS_IN_CHUNK as i32);
+
+        self.rigid_blocks
+            .iter()
+            .map(|rigid_record| {
+                let x_offset_blocks = global_offset_blocks_x + rigid_record.position.x as i32;
+                let z_offset_blocks = global_offset_blocks_z + rigid_record.position.z as i32;
+                BlockData {
+                    offset: [
+                        x_offset_blocks as f32,
+                        rigid_record.position.y as f32,
+                        z_offset_blocks as f32,
+                    ],
+                    pallette_offset: get_pallette_texture_coords(rigid_record.material),
+                }
+            })
+            .collect()
+    }
+
     pub fn get_block_coords(x: Coord, z: Coord) -> (usize, usize) {
         let block_x = get_block_coord(x);
         let block_z = get_block_coord(z);

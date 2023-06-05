@@ -116,6 +116,11 @@ pub fn get_block_type_nonspecific(block_id: &str) -> BlockType {
         return BlockType::Wood;
     }
 
+    let is_leaves = block_id.contains("leaves");
+    if is_leaves {
+        return BlockType::Leaves;
+    }
+
     return BlockType::Unknown;
 }
 

@@ -163,6 +163,13 @@ impl World {
             .collect()
     }
 
+    pub fn get_rigid_blocks_data(&self) -> Vec<BlockData> {
+        self.chunks
+            .iter()
+            .flat_map(|chunk| chunk.get_rigid_block_data().into_iter())
+            .collect()
+    }
+
     pub fn get_block_data(&self) -> Vec<BlockData> {
         let mut blocks = Vec::<BlockData>::new();
 
