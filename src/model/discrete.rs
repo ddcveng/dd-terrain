@@ -17,6 +17,7 @@ use super::implicit::Kernel;
 use super::Coord;
 use super::Position;
 use super::Real;
+use super::implicit::sdf_unit_cube_exact;
 
 // Represents a 2D grid of chunks
 // Rows are parallel to the world x axis
@@ -260,6 +261,43 @@ impl World {
 
             acc + chunk_volume
         })
+    }
+
+    pub fn distance_to_rigid_blocks(&self, point: Position) -> Option<Real> {
+        let kernel = Kernel::new(point, 0.5);
+        let kernel_box = kernel.get_bounding_rectangle();
+
+        let intersected_chunks = self.chunks.iter().filter(|chunk| {
+            chunk
+                .get_bounding_rectangle()
+                .intersect(kernel_box)
+                .is_some()
+        });
+
+        let closest_rigid_block_per_chunk = intersected_chunks
+            .map(|chunk| chunk.get_closest_rigid_block(point))
+            .filter_map(|rigid_block_option| rigid_block_option);
+
+        let Some(closest_rigid_block) =
+            closest_rigid_block_per_chunk.fold(None, |min_dist, dist| match min_dist {
+                None => Some(dist),
+                Some(val) => {
+                    if dist.1 < val.1 {
+                        Some(dist)
+                    } else {
+                        min_dist
+                    }
+                }
+            }) 
+        else {
+            return None;
+        };
+
+        let block_position = closest_rigid_block.0.position;
+        let block_local_point = point.zip(block_position, |k, b| k - b);
+
+
+        Some(sdf_unit_cube_exact(block_local_point))
     }
 
     pub fn sample_materials(&self, kernel: Kernel) -> MaterialBlend {

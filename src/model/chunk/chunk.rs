@@ -9,6 +9,7 @@ use crate::model::rectangle::Rectangle;
 use crate::model::{Coord, Position, Real};
 
 use array_init::array_init;
+use cgmath::MetricSpace;
 use glium::implement_vertex;
 use itertools::Itertools;
 
@@ -33,7 +34,7 @@ const CHUNK_SIZE: usize = minecraft::BLOCKS_IN_CHUNK;
 
 #[derive(Clone, Copy)]
 pub struct RigidBlockRecord {
-    position: Position,
+    pub position: Position,
     material: BlockType,
 }
 
@@ -112,9 +113,16 @@ impl Chunk {
 
         // update rigid block records
         if is_rigid_block(block) {
-            let position = Position::new(x as f64, base_height as f64, z as f64);
+            let local_position = Position::new(x as f64, base_height as f64, z as f64);
+            let position = self.to_global_position(local_position);
+
+            // offset the position to the center of the block
+            // TODO: make a constant for block size
+            // TODO: does this make sense? why not have the blocks centered by default?
+            let offset_position = position.map(|x| x + 0.5);
+
             let rigid_record = RigidBlockRecord {
-                position,
+                position: offset_position,
                 material: block,
             };
 
@@ -149,20 +157,14 @@ impl Chunk {
     }
 
     pub fn get_rigid_block_data(&self) -> Vec<BlockData> {
-        let (chunk_global_x, chunk_global_z) = self.position.get_global_position_in_chunks();
-        let global_offset_blocks_x = chunk_global_x * (minecraft::BLOCKS_IN_CHUNK as i32);
-        let global_offset_blocks_z = chunk_global_z * (minecraft::BLOCKS_IN_CHUNK as i32);
-
         self.rigid_blocks
             .iter()
             .map(|rigid_record| {
-                let x_offset_blocks = global_offset_blocks_x + rigid_record.position.x as i32;
-                let z_offset_blocks = global_offset_blocks_z + rigid_record.position.z as i32;
                 BlockData {
                     offset: [
-                        x_offset_blocks as f32,
+                        rigid_record.position.x as f32,
                         rigid_record.position.y as f32,
-                        z_offset_blocks as f32,
+                        rigid_record.position.z as f32,
                     ],
                     pallette_offset: get_pallette_texture_coords(rigid_record.material),
                 }
@@ -201,6 +203,52 @@ impl Chunk {
                     (position, material)
                 })
         })
+    }
+
+    // Returns None if there are no rigid blocks
+    pub fn get_closest_rigid_block(&self, position: Position) -> Option<(RigidBlockRecord, Real)> {
+        let Some((closest_rigid_block, distance2)) = self
+            .rigid_blocks
+            .iter()
+            .map(|rigid_record| (rigid_record, position.distance2(rigid_record.position)))
+            .fold(None, |min_dist, dist| match min_dist {
+                None => Some(dist),
+                Some(val) => {
+                    if dist.1 < val.1 {
+                        Some(dist)
+                    } else {
+                        min_dist
+                    }
+                }
+            }) 
+        else {
+            return None;
+        };
+
+
+        Some((closest_rigid_block.clone(), distance2))
+    }
+
+    fn to_global_position(&self, relative_position: Position) -> Position {
+        let (chunk_global_x, chunk_global_z) = self.position.get_global_position_in_chunks();
+        let global_offset_blocks_x = (chunk_global_x * (minecraft::BLOCKS_IN_CHUNK as i32)) as Coord;
+        let global_offset_blocks_z = (chunk_global_z * (minecraft::BLOCKS_IN_CHUNK as i32)) as Coord;
+
+        Position::new(
+            global_offset_blocks_x + relative_position.x, 
+            relative_position.y, 
+            global_offset_blocks_z + relative_position.z)
+    }
+
+    fn to_local_position(&self, global_position: Position) -> Position {
+        let (chunk_global_x, chunk_global_z) = self.position.get_global_position_in_chunks();
+        let global_offset_blocks_x = (chunk_global_x * (minecraft::BLOCKS_IN_CHUNK as i32)) as Coord;
+        let global_offset_blocks_z = (chunk_global_z * (minecraft::BLOCKS_IN_CHUNK as i32)) as Coord;
+
+        Position::new(
+            global_offset_blocks_x - global_position.x, 
+            global_position.y, 
+            global_offset_blocks_z - global_position.z)
     }
 
     // Intersection is a rectangle local to the chunk - its origin is in chunk local coordinates

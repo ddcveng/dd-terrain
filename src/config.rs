@@ -9,7 +9,7 @@ pub const FOVY: Rad<Real> = Rad(std::f64::consts::FRAC_PI_2);
 pub const Z_NEAR: Real = 0.1;
 pub const Z_FAR: Real = 50.;
 
-pub const SPAWN_POINT: Position = Point3::new(201.7, 64.77, 172.0);
+pub const SPAWN_POINT: Position = Point3::new(228.7, 66.77, 199.0);
 
 pub const WORLD_SIZE: usize = 5;
 

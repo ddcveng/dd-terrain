@@ -1,3 +1,5 @@
+use cgmath::EuclideanSpace;
+use cgmath::InnerSpace;
 use cgmath::Point3;
 use cgmath::Vector3;
 
@@ -49,11 +51,38 @@ impl Kernel {
     pub fn y_high(&self) -> Real {
         self.position.y + self.radius
     }
+
+    pub fn center(&self) -> Position {
+        self.position
+    }
 }
 
 pub fn sample_materials(model: &World, point: Position) -> MaterialBlend {
     let kernel = Kernel::new(point, MATERIAL_SIGMA);
     return model.sample_materials(kernel);
+}
+
+const RIGID_BLOCK_SMOOTHNESS: Real = 0.01;
+pub fn evaluate_density_rigid(model: &World, point: Position) -> Real {
+    let model_distance = -evaluate_density(model, point);
+    let rigid_distance = model.distance_to_rigid_blocks(point);
+
+    match rigid_distance {
+        //Some(distance) => model_density.min(distance),
+        Some(distance) => smooth_minimum(model_distance, distance, RIGID_BLOCK_SMOOTHNESS),
+        None => model_distance,
+    }
+}
+
+// Polynomial smooth min
+// k controls the size of the region where the values are smoothed
+//
+// This version does not generalize to more than 2 dimensions
+// and calling it multiple times with 2 arguments at a time is
+// !NOT! order independent
+fn smooth_minimum(a: Real, b: Real, k: Real) -> Real {
+    let h = (k - (a - b).abs()).max(0.0) / k;
+    a.min(b) - h * h * k * 0.25
 }
 
 pub fn evaluate_density(model: &World, point: Position) -> Real {
@@ -118,7 +147,7 @@ fn differentiate_dynamic(f: &impl Fn(Position) -> Real, p: Position, target: Par
 }
 
 pub fn get_gradient(model: &World, point: Position) -> Vector3<Real> {
-    let f = |p| evaluate_density(model, p);
+    let f = |p| evaluate_density_rigid(model, p);
 
     gradient(f, point)
 }
@@ -144,4 +173,20 @@ pub fn gradient_fast(f: impl Fn(Position) -> Real, point: Position) -> Vector3<R
     let dz = differentiate_simple(fnext_z);
 
     Vector3::new(dx, dy, dz)
+}
+
+const UNIT_CUBE_RADIUS: Real = 0.5;
+// Expects position in the local space of the cube
+pub fn sdf_unit_cube_exact(position: Position) -> Real {
+    // Mirror the position to the positive octant and move the origin to the point (1, 1, 1) of
+    // the unit cube
+    let q = position.map(|p| p.abs() - UNIT_CUBE_RADIUS);
+
+    let positive_q = q.map(|x| x.max(0.0));
+    let outside_distance = positive_q.to_vec().magnitude();
+
+    let max_q = q.x.max(q.y.max(q.z));
+    let inside_distance = max_q.min(0.0);
+
+    outside_distance + inside_distance
 }
