@@ -117,4 +117,7 @@ void main() {
     vec4 texture_color = assemble_color(fragment_position, v_normal);
 
     color = vec4((ambience + diffusion), 1.0) * texture_color;
+
+    // Debug normals
+    //color = vec4(v_normal, 1.0);
 }

@@ -62,7 +62,7 @@ pub fn sample_materials(model: &World, point: Position) -> MaterialBlend {
     return model.sample_materials(kernel);
 }
 
-const RIGID_BLOCK_SMOOTHNESS: Real = 0.01;
+const RIGID_BLOCK_SMOOTHNESS: Real = 1.0;
 pub fn evaluate_density_rigid(model: &World, point: Position) -> Real {
     let model_distance = -evaluate_density(model, point);
     let rigid_distance = model.distance_to_rigid_blocks(point);
@@ -110,10 +110,11 @@ fn differentiate(f: &impl Fn(Position) -> Real, x: Position, next_x: Position, h
     (fnext_x - fx) / h
 }
 
-fn offset_position(pos: Position, dimension: Parameter) -> Position {
+fn offset_position(pos: Position, dimension: Parameter, backwards: bool) -> Position {
+    let sign = if backwards { -1.0 } else { 1.0 };
     let get_delta_for = |parameter: Parameter| {
         if parameter == dimension {
-            EPSILON
+            sign * EPSILON
         } else {
             0.0
         }
@@ -161,11 +162,12 @@ pub fn gradient(f: impl Fn(Position) -> Real, point: Position) -> Vector3<Real> 
 }
 
 // Only evaluates the function f 4 times instead of the regular 6
+// Forward gradient
 pub fn gradient_fast(f: impl Fn(Position) -> Real, point: Position) -> Vector3<Real> {
     let fx = f(point);
-    let fnext_x = f(offset_position(point, Parameter::X));
-    let fnext_y = f(offset_position(point, Parameter::Y));
-    let fnext_z = f(offset_position(point, Parameter::Z));
+    let fnext_x = f(offset_position(point, Parameter::X, false));
+    let fnext_y = f(offset_position(point, Parameter::Y, false));
+    let fnext_z = f(offset_position(point, Parameter::Z, false));
 
     let differentiate_simple = |val| (val - fx) / EPSILON;
     let dx = differentiate_simple(fnext_x);
@@ -173,6 +175,22 @@ pub fn gradient_fast(f: impl Fn(Position) -> Real, point: Position) -> Vector3<R
     let dz = differentiate_simple(fnext_z);
 
     Vector3::new(dx, dy, dz)
+}
+
+pub fn central_gradient(f: impl Fn(Position) -> Real, point: Position) -> Vector3<Real> {
+    let fnext_x = f(offset_position(point, Parameter::X, false));
+    let fprev_x = f(offset_position(point, Parameter::X, true));
+    let dx = fnext_x - fprev_x;
+
+    let fnext_y = f(offset_position(point, Parameter::Y, false));
+    let fprev_y = f(offset_position(point, Parameter::Y, true));
+    let dy = fnext_y - fprev_y;
+
+    let fnext_z = f(offset_position(point, Parameter::Z, false));
+    let fprev_z = f(offset_position(point, Parameter::Z, true));
+    let dz = fnext_z - fprev_z;
+
+    Vector3::new(dx, dy, dz).normalize()
 }
 
 const UNIT_CUBE_RADIUS: Real = 0.5;

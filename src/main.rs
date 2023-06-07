@@ -29,7 +29,9 @@ use minecraft::get_minecraft_chunk_position;
 
 mod model;
 use model::discrete::World;
-use model::implicit::{evaluate_density, get_gradient};
+use model::implicit::{
+    evaluate_density, evaluate_density_rigid, get_gradient, sdf_unit_cube_exact,
+};
 use model::polygonize::{Mesh, MeshVertex, Rectangle3D};
 use model::{discrete, Position, Real};
 
@@ -76,7 +78,7 @@ fn main() {
         .set_fragment_shader(DISCRETE_FS)
         .build(&display)
         .unwrap();
-    let mut rigid_blocks_scene = Scene::new_instanced(cube_fragment2, rigid_blocks_instance_data);
+    let rigid_blocks_scene = Scene::new_instanced(cube_fragment2, rigid_blocks_instance_data);
 
     let mut imgui_data = ImguiWrapper::new(&display);
     let dimensions = display.get_framebuffer_dimensions();
@@ -153,13 +155,13 @@ fn main() {
                         &render_state,
                         &texture,
                     );
-                    render_world(
-                        &rigid_blocks_scene,
-                        &mut target,
-                        &camera,
-                        &render_state,
-                        &texture,
-                    );
+                    //                    render_world(
+                    //                        &rigid_blocks_scene,
+                    //                        &mut target,
+                    //                        &camera,
+                    //                        &render_state,
+                    //                        &texture,
+                    //                    );
                 }
             }
 
@@ -193,7 +195,7 @@ fn to_uniform_matrix(matrix: &Matrix4<Real>) -> [[f32; 4]; 4] {
 
 fn polygonize(world: &discrete::World) -> Mesh {
     let xz_position = PlanarPosition::new(194.0, 175.0);
-    let support_size = 40.0;
+    let support_size = 44.0;
     let pos = Position::new(xz_position.x, 50.0, xz_position.y);
 
     //    println!("-----------------------------------");
@@ -206,7 +208,7 @@ fn polygonize(world: &discrete::World) -> Mesh {
         depth: support_size,
     };
 
-    let density_func = |p| model::implicit::evaluate_density(world, p);
+    let density_func = |p| model::implicit::evaluate_density_rigid(world, p);
     let material_func = |p| model::implicit::sample_materials(world, p);
 
     model::polygonize::polygonize(support, density_func, material_func)
@@ -295,7 +297,7 @@ fn get_imgui_builder(
     let block_at_position = world.get_block(position);
     let render_mode = state.render_mode;
 
-    let density = evaluate_density(world, position);
+    let density = evaluate_density_rigid(world, position);
     let gradient = get_gradient(world, position);
 
     let builder = move |ui: &imgui::Ui| {

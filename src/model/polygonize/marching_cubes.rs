@@ -14,7 +14,10 @@ use crate::{
 // TODO: maybe control the cell size through a different variable
 // for example something like mesh subdivision factor : usize and
 // if it has value x it means divide block in x*x*x cells
-const CELL_SIZE: Real = 0.125;
+const CELL_SIZE: Real = 0.50;
+
+// Needs to be slightly larger than 0, even though we want to display the isosurface at 0.
+// Otherwise we get weird aliasing when rendering implicit blocks
 const SURFACE_LEVEL: Real = 0.0001;
 
 pub struct Mesh {
@@ -83,9 +86,10 @@ fn build_mesh_vertices(
     material_func: &impl Fn(Position) -> MaterialBlend,
 ) -> (Vec<MeshVertex>, IntersectionVertexMap) {
     let build_vertex = |p| {
-        let normal = implicit::gradient_fast(density_func, p).normalize();
+        let normal = implicit::central_gradient(density_func, p);
         let blend = material_func(p);
         let weights = blend.into_material_weights();
+
         MeshVertex {
             position: [p.x as f32, p.y as f32, p.z as f32],
             normal: [normal.x as f32, normal.y as f32, normal.z as f32],

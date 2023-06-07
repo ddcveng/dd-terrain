@@ -85,7 +85,7 @@ impl MaterialStack {
 
         let intersecting_blocks = (low_index..high_index)
             .map(|i| (index_to_height(i), self.blocks[i].clone()))
-            .filter(|(_, material)| is_smoothable_block(*material));
+            .filter(|(_, material)| is_visible_block(*material));
 
         let blocks_with_intersection_size =
             intersecting_blocks.map(move |(base_height, material)| {
