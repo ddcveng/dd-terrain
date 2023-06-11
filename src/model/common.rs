@@ -8,9 +8,10 @@ pub enum BlockType {
     Grass = 2,
     Stone = 3,
     Wood = 4,
-    Sand = 5,
-    Ore = 6,
-    Unknown = 7,
+    Leaves = 5,
+    Sand = 6,
+    Ore = 7,
+    Unknown = 8,
 }
 
 pub const BLOCK_TYPES: usize = (BlockType::Unknown as usize) + 1;
@@ -46,4 +47,9 @@ pub fn get_block_color(block_type: BlockType) -> [f32; 3] {
 
 pub fn is_visible_block(material: BlockType) -> bool {
     !matches!(material, BlockType::Air)
+}
+
+const RIGID_MATERIALS: [BlockType; 2] = [BlockType::Wood, BlockType::Leaves];
+pub fn is_rigid_block(material: BlockType) -> bool {
+    RIGID_MATERIALS.contains(&material)
 }

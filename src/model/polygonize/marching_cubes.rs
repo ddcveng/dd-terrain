@@ -7,8 +7,18 @@ use crate::{
 };
 
 // The jump in quality between 1.0 and 0.9 is insane!
-const CELL_SIZE: Real = 0.5;
-const SURFACE_LEVEL: Real = 0.0;
+//
+// This value should divide block size without remainder or weird artefacts occure when building
+// the mesh - TODO: why?
+//
+// TODO: maybe control the cell size through a different variable
+// for example something like mesh subdivision factor : usize and
+// if it has value x it means divide block in x*x*x cells
+const CELL_SIZE: Real = 0.50;
+
+// Needs to be slightly larger than 0, even though we want to display the isosurface at 0.
+// Otherwise we get weird aliasing when rendering implicit blocks
+const SURFACE_LEVEL: Real = 0.0001;
 
 pub struct Mesh {
     // Vertices of the mesh
@@ -48,6 +58,7 @@ type IntersectionContainer = Vec<Intersection>;
 // The mapping is decoupled from the Intersection to allow parallelization
 type IntersectionVertexMap = Vec<Option<u32>>;
 
+// TODO: rename density func, its an sdf now ...
 // Driver function, returns vertex+index buffer and dispatches work
 pub fn polygonize(
     support: Rectangle3D,
@@ -75,9 +86,10 @@ fn build_mesh_vertices(
     material_func: &impl Fn(Position) -> MaterialBlend,
 ) -> (Vec<MeshVertex>, IntersectionVertexMap) {
     let build_vertex = |p| {
-        let normal = -implicit::gradient_fast(density_func, p).normalize();
+        let normal = implicit::central_gradient(density_func, p);
         let blend = material_func(p);
         let weights = blend.into_material_weights();
+
         MeshVertex {
             position: [p.x as f32, p.y as f32, p.z as f32],
             normal: [normal.x as f32, normal.y as f32, normal.z as f32],
@@ -239,7 +251,6 @@ fn get_edge_end(grid: &Grid, edge_start: GridPosition, edge_index: u16) -> Optio
     grid.get_cell(end_position)
 }
 
-// TODO: interpolate points based on density
 fn get_intersection(edge_start: GridPoint, edge_end: GridPoint) -> Intersection {
     let start_density = edge_start.density;
     let end_density = edge_end.density;
@@ -267,7 +278,7 @@ fn get_cell_case(grid: &Grid, cell_index: GridPosition) -> usize {
         return lookup_index;
     }
 
-    let mut lookup_index: u32 = 0;
+    let mut lookup_index: u32 = 255;
     for i in 0..CUBE_VERTICES {
         let grid_position = add(
             cell_index,
@@ -279,7 +290,8 @@ fn get_cell_case(grid: &Grid, cell_index: GridPosition) -> usize {
         // If we go outside the grid, there is no edge..
         if let Some(cell) = grid.get_cell(grid_position) {
             if cell.density < SURFACE_LEVEL {
-                lookup_index |= 1 << i;
+                // WTFFF???
+                lookup_index &= !(1 << i);
             }
         }
     }

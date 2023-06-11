@@ -85,7 +85,7 @@ vec3 get_projection_coefficients(vec3 position_abs, vec3 normal) {
     return vec3(alpha, beta, gamma);
 }
 
-const float TILE_SIZE = 1.0;
+const float TILE_SIZE = 0.5;
 vec4 assemble_color(vec3 world_position, vec3 normal) {
     float x = PALLETTE_TILE_SIZE * mod(abs(world_position.x), TILE_SIZE) / TILE_SIZE;
     float y = PALLETTE_TILE_SIZE * mod(abs(world_position.y), TILE_SIZE) / TILE_SIZE;
@@ -103,7 +103,7 @@ vec4 assemble_color(vec3 world_position, vec3 normal) {
         + beta * sample_blended_texture(x, z)
         + alpha * sample_blended_texture(y, z);
 
-    return texture_color;
+    return vec4(texture_color.rgb, 1.0);
 }
 
 void main() {
@@ -117,4 +117,7 @@ void main() {
     vec4 texture_color = assemble_color(fragment_position, v_normal);
 
     color = vec4((ambience + diffusion), 1.0) * texture_color;
+
+    // Debug normals
+    //color = vec4(v_normal, 1.0);
 }

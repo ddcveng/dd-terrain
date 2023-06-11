@@ -1,5 +1,5 @@
 use crate::model::{
-    common::{is_visible_block, BlockType},
+    common::{is_rigid_block, is_visible_block, BlockType},
     Coord, Real,
 };
 
@@ -17,6 +17,10 @@ fn index_to_height(index: usize) -> isize {
 
 fn height_to_index(height: isize) -> usize {
     (height + NEGATIVE_HEIGHT_PART) as usize
+}
+
+fn is_smoothable_block(material: BlockType) -> bool {
+    is_visible_block(material) && !is_rigid_block(material)
 }
 
 impl MaterialStack {
@@ -41,7 +45,7 @@ impl MaterialStack {
 
         let blocks_in_range = (low_index..high_index)
             .map(|i| self.blocks[i])
-            .filter(|material| is_visible_block(*material))
+            .filter(|material| is_smoothable_block(*material))
             .count();
 
         if blocks_in_range == 0 {
@@ -49,14 +53,14 @@ impl MaterialStack {
         }
 
         let excess_low = {
-            let cutoff = is_visible_block(self.blocks[low_index]);
+            let cutoff = is_smoothable_block(self.blocks[low_index]);
             match cutoff {
                 true => (y_low - low_floor) as Real,
                 false => 0.0,
             }
         };
         let excess_high = {
-            let cutoff = is_visible_block(self.blocks[high_index - 1]);
+            let cutoff = is_smoothable_block(self.blocks[high_index - 1]);
             match cutoff {
                 true => (high_ceil - y_high) as Real,
                 false => 0.0,
