@@ -20,3 +20,4 @@ fastnbt = "2.4.3"
 array-init = "2.1.0"
 itertools = "0.10.5"
 image = { version = "0.24.6", features = ["png"] }
+lazy-init = "0.5.1"
