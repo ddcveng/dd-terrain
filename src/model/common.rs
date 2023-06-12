@@ -1,6 +1,8 @@
 // TODO: is 1 byte for block type enough?
 // Note: Unknown must always be the last variant,
 // or at least the variant with the largest value.
+// The integer values are used in shaders to determine the texture,
+// changing them requires updating the shaders
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum BlockType {
     Air = 0,
