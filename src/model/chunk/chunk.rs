@@ -41,7 +41,6 @@ pub struct RigidBlockRecord {
 // A chunks is a 16*y*16 region of blocks
 pub struct Chunk {
     data: [MaterialStack; CHUNK_SIZE * CHUNK_SIZE],
-
     rigid_blocks: Vec<RigidBlockRecord>,
 
     // This is the position of the bottom left corner of the chunk from a top down view
