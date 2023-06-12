@@ -35,7 +35,7 @@ where
     }
 }
 
-// Dummy type used to as D type when no instancing is required
+// Dummy type used as D type when no instancing is required
 #[derive(Clone, Copy)]
 pub struct NoInstance {}
 

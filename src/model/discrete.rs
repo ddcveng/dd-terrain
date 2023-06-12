@@ -1,5 +1,6 @@
 use array_init::array_init;
 use itertools;
+use lazy_init::Lazy;
 use std::cmp::max;
 use std::cmp::min;
 
@@ -18,6 +19,10 @@ use super::Coord;
 use super::Position;
 use super::Real;
 use super::implicit::sdf_unit_cube_exact;
+use super::polygonize::Mesh;
+use super::polygonize::Rectangle3D;
+
+const CHUNKS_IN_WORLD: usize = WORLD_SIZE * WORLD_SIZE;
 
 // Represents a 2D grid of chunks
 // Rows are parallel to the world x axis
@@ -30,7 +35,9 @@ use super::implicit::sdf_unit_cube_exact;
 // and can be used as a sliding window centered around the player
 pub struct World {
     // Internal grid representation as a flat array
-    chunks: [Chunk; WORLD_SIZE * WORLD_SIZE],
+    chunks: [Chunk; CHUNKS_IN_WORLD],
+
+    chunk_meshes: [Lazy<Mesh>; CHUNKS_IN_WORLD],
 
     // TODO: make private and get the world support to polygonize another way
     // Position of the center chunk in the world
@@ -120,6 +127,7 @@ impl World {
 
                 minecraft::get_chunk(chunk_position)
             }),
+            chunk_meshes: array_init(|_| Lazy::new()),
             center: center_chunk_position,
         }
     }
@@ -198,16 +206,19 @@ impl World {
         let reverse_x = direction_x < 0;
         let reverse_z = direction_z < 0;
 
+        // TODO: comment what does this do
         for z in get_iterator(0, WORLD_SIZE, reverse_z) {
             for x in get_iterator(0, WORLD_SIZE, reverse_x) {
                 let next_x = x as i32 + direction_x;
                 let next_z = z as i32 + direction_z;
+
+                let current_chunk_index = World::chunk_index(x, z);
                 if let Some(next_x) = clamp_chunk_index(next_x) {
                     if let Some(next_z) = clamp_chunk_index(next_z) {
-                        let current_index = z * config::WORLD_SIZE + x;
-                        let next_index = next_z * config::WORLD_SIZE + next_x;
+                        let next_index = World::chunk_index(next_x, next_z);
 
-                        self.chunks.swap(current_index, next_index);
+                        self.chunks.swap(current_chunk_index, next_index);
+                        self.chunk_meshes.swap(current_chunk_index, next_index);
                         continue;
                     }
                 }
@@ -216,16 +227,23 @@ impl World {
                     min(max(x as i32 - direction_x, 0), WORLD_SIZE as i32 - 1) as usize;
                 let original_z =
                     min(max(z as i32 - direction_z, 0), WORLD_SIZE as i32 - 1) as usize;
-                let current_position =
-                    &self.chunks[original_z * config::WORLD_SIZE + original_x].position;
-                let position_to_load = current_position.offset(direction_x, direction_z);
+
+                let original_index = World::chunk_index(original_x, original_z);
+                let original_position = &self.chunks[original_index].position;
+                let position_to_load = original_position.offset(direction_x, direction_z);
 
                 let new_chunk = minecraft::get_chunk(position_to_load);
-                self.chunks[z * config::WORLD_SIZE + x] = new_chunk;
+
+                self.chunks[current_chunk_index] = new_chunk;
+                self.chunk_meshes[current_chunk_index] = Lazy::new();
             }
         }
 
         return true;
+    }
+
+    fn chunk_index(x: usize, z: usize) -> usize {
+        z * config::WORLD_SIZE + x
     }
 
     pub fn get_block(&self, position: Position) -> BlockType {
@@ -320,5 +338,53 @@ impl World {
                 blend.merge(chunk_volume);
                 blend
             })
+    }
+
+    fn polygonize_chunk(&self, chunk: &Chunk) -> Mesh {
+        let support_xz = chunk.position.get_global_position();
+
+        let support_low_y = 40.0; // TODO: use MIN_Y
+        let support_y_size = 40.0; // TODO: use full chunk height
+
+        let support = Rectangle3D {
+            position: Position::new(support_xz.x, support_low_y, support_xz.y),
+            width: minecraft::BLOCKS_IN_CHUNK as Real,
+            depth: minecraft::BLOCKS_IN_CHUNK as Real,
+            height: support_y_size,
+        };
+
+        let density_func = |p| super::implicit::evaluate_density_rigid(self, p);
+        let material_func = |p| super::implicit::sample_materials(self, p);
+
+        super::polygonize::polygonize(support, density_func, material_func)
+    }
+
+    // 1. calculate support for each chunk
+    // 2. polygonize each chunk separately
+    // 3. merge the meshes of each chunk into one big mesh,
+    //    that is the mesh we return
+    pub fn polygonize(&self) -> Mesh {
+        let mut world_mesh = Mesh::empty();
+
+        // To evaluate the sdf at a point, we need data in a radius around that point.
+        // For the chunks that are on the edges of the (loaded) world we are missing data,
+        // resulting in artifacts when stitching the chunk meshes together.
+        //
+        // For now the simple solution is just to polygonize only the chunks that have all
+        // neighboring chunks loaded.
+        for x in 1..WORLD_SIZE - 1 {
+            for z in 1..WORLD_SIZE - 1 {
+                let chunk_index = World::chunk_index(x, z);
+
+                let chunk = &self.chunks[chunk_index];
+
+                let mesh_creator = || self.polygonize_chunk(chunk);
+                let chunk_mesh = self.chunk_meshes[chunk_index].get_or_create(mesh_creator);
+
+                chunk_mesh.copy_into(&mut world_mesh);
+            }
+        }
+
+        world_mesh
     }
 }

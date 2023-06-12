@@ -1,4 +1,4 @@
-use cgmath::{InnerSpace, Point3};
+use cgmath::Point3;
 use glium::implement_vertex;
 
 use crate::{
@@ -25,8 +25,27 @@ pub struct Mesh {
     pub vertices: Vec<MeshVertex>,
 
     // Indices of vertices forming triangles
-    // len(indices) = 3 * len(vertices)
     pub indices: Vec<u32>,
+}
+
+impl Mesh {
+    pub fn empty() -> Self {
+        Mesh {
+            vertices: Vec::new(),
+            indices: Vec::new(),
+        }
+    }
+
+    pub fn copy_into(&self, other: &mut Mesh) {
+        let index_offset = other.vertices.len() as u32;
+        let indices_transformed = self.indices.iter().map(|index| index_offset + *index);
+
+        // The indices need to be offset to account for any vertices already present in the target
+        // mesh
+        other.indices.extend(indices_transformed);
+
+        other.vertices.extend_from_slice(self.vertices.as_slice());
+    }
 }
 
 // For each cell evaluate this many edge intersections,
@@ -120,6 +139,7 @@ fn build_mesh_vertices(
 // and find the intersections points on them, if any
 fn find_intersections(grid: &Grid) -> IntersectionContainer {
     let mut intersections = IntersectionContainer::new();
+
     // Loop over all points in the grid, for each point evaluate neighboring edges
     for z in 0..grid.depth {
         for y in 0..grid.height {

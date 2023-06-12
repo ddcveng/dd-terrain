@@ -29,9 +29,7 @@ use minecraft::get_minecraft_chunk_position;
 
 mod model;
 use model::discrete::World;
-use model::implicit::{
-    evaluate_density, evaluate_density_rigid, get_gradient, sdf_unit_cube_exact,
-};
+use model::implicit::{evaluate_density_rigid, get_gradient};
 use model::polygonize::{Mesh, MeshVertex, Rectangle3D};
 use model::{discrete, Position, Real};
 
@@ -52,33 +50,9 @@ fn main() {
     let texture = texture_from_file("block-palette.png", &display);
 
     let mut world = discrete::World::new(config::SPAWN_POINT);
-    let (vertex_buffer, indices) = geometry::cube_textured_exclusive_vertex(&display);
-    let instance_positions = {
-        let blocks = world.get_surface_block_data(0, 320);
-        glium::vertex::VertexBuffer::new(&display, &blocks).unwrap()
-    };
-    let rigid_blocks_instance_data = {
-        let data = world.get_rigid_blocks_data();
-        glium::vertex::VertexBuffer::new(&display, &data).unwrap()
-    };
 
-    let cube_fragment = RenderFragmentBuilder::new()
-        .set_geometry(vertex_buffer, indices)
-        .set_vertex_shader(DISCRETE_VS)
-        .set_fragment_shader(DISCRETE_FS)
-        .build(&display)
-        .unwrap();
-
-    let mut discrete_scene = Scene::new_instanced(cube_fragment, instance_positions);
-
-    let (vertex_buffer, indices) = geometry::cube_textured_exclusive_vertex(&display);
-    let cube_fragment2 = RenderFragmentBuilder::new()
-        .set_geometry(vertex_buffer, indices)
-        .set_vertex_shader(DISCRETE_VS)
-        .set_fragment_shader(DISCRETE_FS)
-        .build(&display)
-        .unwrap();
-    let rigid_blocks_scene = Scene::new_instanced(cube_fragment2, rigid_blocks_instance_data);
+    let mut discrete_scene = create_discrete_scene(&world, &display);
+    let mut implicit_scene = create_implicit_scene(&world, &display);
 
     let mut imgui_data = ImguiWrapper::new(&display);
     let dimensions = display.get_framebuffer_dimensions();
@@ -124,6 +98,8 @@ fn main() {
                     glium::vertex::VertexBuffer::new(&display, &blocks).unwrap()
                 };
                 discrete_scene.update_instance_data(instance_positions);
+
+                implicit_scene = create_implicit_scene(&world, &display);
             }
 
             gl_window.window().request_redraw();
@@ -147,7 +123,6 @@ fn main() {
                     &texture,
                 ),
                 RenderingMode::Implicit => {
-                    let implicit_scene = create_implicit_scene(&world, &display);
                     render_world(
                         &implicit_scene,
                         &mut target,
@@ -218,7 +193,7 @@ fn create_implicit_scene<'a>(
     world: &World,
     display: &Display,
 ) -> Scene<'a, NoInstance, MeshVertex, IndexBuffer<u32>> {
-    let mesh = polygonize(world);
+    let mesh = world.polygonize();
     let vertex_buffer = glium::VertexBuffer::new(display, &mesh.vertices).unwrap();
     let index_buffer = glium::IndexBuffer::new(
         display,
@@ -407,4 +382,25 @@ fn create_window() -> (EventLoop<()>, glium::Display) {
         glium::Display::new(builder, context, &event_loop).expect("Failed to initialize display");
 
     (event_loop, display)
+}
+
+fn create_discrete_scene<'a>(
+    world: &World,
+    display: &Display,
+) -> Scene<'a, model::chunk::BlockData, infrastructure::vertex::TexturedVertex, IndexBuffer<u32>> {
+    let (vertex_buffer, indices) = geometry::cube_textured_exclusive_vertex(display);
+    let instance_positions = {
+        let blocks = world.get_surface_block_data(0, 320);
+        glium::vertex::VertexBuffer::new(display, &blocks).unwrap()
+    };
+
+    let cube_fragment = RenderFragmentBuilder::new()
+        .set_geometry(vertex_buffer, indices)
+        .set_vertex_shader(DISCRETE_VS)
+        .set_fragment_shader(DISCRETE_FS)
+        .build(display)
+        .unwrap();
+
+    let discrete_scene = Scene::new_instanced(cube_fragment, instance_positions);
+    discrete_scene
 }
