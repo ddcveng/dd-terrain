@@ -1,6 +1,7 @@
 use glium::glutin::event::{Event, WindowEvent};
 use glium::glutin::event_loop::{ControlFlow, EventLoop};
 use glium::index::IndicesSource;
+use glium::texture::SrgbTexture2d;
 use glium::{uniform, Display, Frame, IndexBuffer, Surface, Texture2d};
 
 use glium::glutin::event::VirtualKeyCode;
@@ -47,7 +48,7 @@ const IMPLICIT_FS: &str = include_str!("shaders/implicit_fs.glsl");
 fn main() {
     let (event_loop, display) = create_window();
 
-    let texture = texture_from_file("block-palette.png", &display);
+    let texture = texture_from_file("block-palette-tiling.png", &display);
 
     let mut world = discrete::World::new(config::SPAWN_POINT);
 
@@ -217,7 +218,7 @@ fn render_world<'a, D, T, I>(
     target: &mut Frame,
     camera: &Camera,
     state: &RenderState,
-    texture: &Texture2d,
+    texture: &SrgbTexture2d,
 ) -> ()
 where
     D: Copy,
@@ -225,14 +226,25 @@ where
     I: 'a,
     IndicesSource<'a>: From<&'a I>,
 {
+    let camera_position = camera.get_position();
+    let sun_position = [
+        (camera_position.x + 200.0) as f32,
+        (camera_position.y + 300.0) as f32,
+        (camera_position.z + 200.0) as f32,
+    ];
+
     let model: [[f32; 4]; 4] = cgmath::Matrix4::from_scale(1.0).into();
     let projection: [[f32; 4]; 4] = to_uniform_matrix(&camera.projection);
     let view: [[f32; 4]; 4] = to_uniform_matrix(&camera.world_to_view);
+
     let uni = uniform! {
         projection: projection,
         view: view,
         model: model,
-        block_pallette: texture.sampled().magnify_filter(glium::uniforms::MagnifySamplerFilter::Nearest),
+        block_pallette: texture.sampled()
+            .magnify_filter(glium::uniforms::MagnifySamplerFilter::Nearest)
+            .wrap_function(glium::uniforms::SamplerWrapFunction::BorderClamp),
+        sun_position: sun_position,
     };
 
     let polygon_mode = match state.render_wireframe {

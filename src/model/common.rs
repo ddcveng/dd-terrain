@@ -1,3 +1,5 @@
+use super::Real;
+
 // TODO: is 1 byte for block type enough?
 // Note: Unknown must always be the last variant,
 // or at least the variant with the largest value.
@@ -16,6 +18,23 @@ pub enum BlockType {
     Unknown = 8,
 }
 
+impl TryFrom<usize> for BlockType {
+    type Error = ();
+
+    fn try_from(v: usize) -> Result<Self, Self::Error> {
+        match v {
+            x if x == BlockType::Dirt as usize => Ok(BlockType::Dirt),
+            x if x == BlockType::Grass as usize => Ok(BlockType::Grass),
+            x if x == BlockType::Stone as usize => Ok(BlockType::Stone),
+            x if x == BlockType::Wood as usize => Ok(BlockType::Wood),
+            x if x == BlockType::Leaves as usize => Ok(BlockType::Leaves),
+            x if x == BlockType::Sand as usize => Ok(BlockType::Sand),
+            x if x == BlockType::Ore as usize => Ok(BlockType::Ore),
+            _ => Err(()),
+        }
+    }
+}
+
 pub const BLOCK_TYPES: usize = (BlockType::Unknown as usize) + 1;
 
 const PALLETTE_SIZE: usize = 4;
@@ -27,6 +46,8 @@ pub fn get_pallette_texture_coords(block_type: BlockType) -> [f32; 2] {
         BlockType::Stone => (1, 3),
         BlockType::Sand => (2, 3),
         BlockType::Ore => (3, 3),
+        BlockType::Wood => (1, 2),
+        BlockType::Leaves => (2, 2),
         _ => (3, 0),
     };
 
@@ -36,14 +57,11 @@ pub fn get_pallette_texture_coords(block_type: BlockType) -> [f32; 2] {
     ]
 }
 
-pub fn get_block_color(block_type: BlockType) -> [f32; 3] {
+pub fn activation_treshold(block_type: BlockType) -> Real {
     match block_type {
-        BlockType::Grass => [0.09, 0.4, 0.05],
-        BlockType::Dirt => [0.36, 0.09, 0.05],
-        BlockType::Stone => [0.6, 0.6, 0.6],
-        BlockType::Sand => [0.76, 0.69, 0.5],
-        BlockType::Ore => [0.2, 0.2, 0.2],
-        _ => [1.0, 0.0, 0.0],
+        BlockType::Dirt => 0.45,
+        BlockType::Leaves => 0.9,
+        _ => 0.0, // always activate
     }
 }
 
@@ -51,7 +69,7 @@ pub fn is_visible_block(material: BlockType) -> bool {
     !matches!(material, BlockType::Air)
 }
 
-const RIGID_MATERIALS: [BlockType; 2] = [BlockType::Wood, BlockType::Leaves];
+const RIGID_MATERIALS: [BlockType; 1] = [BlockType::Wood];
 pub fn is_rigid_block(material: BlockType) -> bool {
     RIGID_MATERIALS.contains(&material)
 }

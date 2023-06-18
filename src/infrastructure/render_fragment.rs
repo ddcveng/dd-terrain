@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 
 use glium::index::IndicesSource;
 use glium::program::Program;
+use glium::program::ProgramCreationInput;
 use glium::uniforms::Uniforms;
 use glium::Surface;
 use glium::VertexBuffer;
@@ -174,14 +175,18 @@ where
             .fragment_shader_source
             .ok_or(FragmentCreationError::NoGeometry)?;
 
-        let program_x = Program::from_source(
-            display,
-            vertex_shader_source,
-            fragment_shader_source,
-            self.geometry_shader_source,
-        );
+        let program_input = ProgramCreationInput::SourceCode {
+            vertex_shader: vertex_shader_source,
+            tessellation_control_shader: None,
+            tessellation_evaluation_shader: None,
+            geometry_shader: self.geometry_shader_source,
+            fragment_shader: fragment_shader_source,
+            transform_feedback_varyings: None,
+            outputs_srgb: false,
+            uses_point_size: false,
+        };
 
-        let program = program_x.unwrap();
+        let program = Program::new(display, program_input).unwrap();
 
         Ok(RenderFragment {
             vertex_buffer,

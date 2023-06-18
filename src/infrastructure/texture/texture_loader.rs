@@ -1,10 +1,13 @@
 use std::path::Path;
 
-use glium::texture::{RawImage2d, Texture2d};
+use glium::texture::{RawImage2d, SrgbTexture2d};
 
 use crate::config;
 
-pub fn texture_from_file(filename: &str, facade: &glium::Display) -> Texture2d {
+// NOTE: Only use this for material textures that are in sRGB color space
+// for normal maps or other textures use plain Texture2d
+// TODO: make a loader function for plain textures if needed
+pub fn texture_from_file(filename: &str, facade: &glium::Display) -> SrgbTexture2d {
     let file_path = Path::new(config::ASSETS_PATH).join(filename);
     let img = match image::open(file_path) {
         Ok(img) => img,
@@ -21,7 +24,7 @@ pub fn texture_from_file(filename: &str, facade: &glium::Display) -> Texture2d {
     let pixels_raw = rgb_image_buffer.into_raw();
 
     let texture_data_source = RawImage2d::from_raw_rgb(pixels_raw, dimensions);
-    let texture = match Texture2d::new(facade, texture_data_source) {
+    let texture = match SrgbTexture2d::new(facade, texture_data_source) {
         Ok(tex) => tex,
         Err(texture_creation_error) => {
             panic!("failed to create texture - {texture_creation_error}!")

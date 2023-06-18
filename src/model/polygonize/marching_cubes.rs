@@ -1,4 +1,4 @@
-use cgmath::Point3;
+use cgmath::{InnerSpace, Point3, Vector3, Zero};
 use glium::implement_vertex;
 
 use crate::{
@@ -25,7 +25,7 @@ pub struct Mesh {
     pub vertices: Vec<MeshVertex>,
 
     // Indices of vertices forming triangles
-    pub indices: Vec<u32>,
+    pub indices: Vec<VertexIndex>,
 }
 
 impl Mesh {
@@ -37,7 +37,7 @@ impl Mesh {
     }
 
     pub fn copy_into(&self, other: &mut Mesh) {
-        let index_offset = other.vertices.len() as u32;
+        let index_offset = other.vertices.len() as VertexIndex;
         let indices_transformed = self.indices.iter().map(|index| index_offset + *index);
 
         // The indices need to be offset to account for any vertices already present in the target
@@ -69,13 +69,16 @@ const EDGE_INDICES: [u16; INTERSECTION_STRIDE] = [
 type Intersection = Option<Position>;
 type IntersectionContainer = Vec<Intersection>;
 
+// This is the type used in the index buffer, it must have fixed size, so no usize
+type VertexIndex = u32;
+
 // Has the same length as IntersectionContainer
 // each element maps Intersection with the matching index to the vertex index in the resulting
 // vertex buffer
 // Option variants should match for each index
 //
 // The mapping is decoupled from the Intersection to allow parallelization
-type IntersectionVertexMap = Vec<Option<u32>>;
+type IntersectionVertexMap = Vec<Option<VertexIndex>>;
 
 // TODO: rename density func, its an sdf now ...
 // Driver function, returns vertex+index buffer and dispatches work
@@ -86,53 +89,103 @@ pub fn polygonize(
 ) -> Mesh {
     let grid = Grid::new(support, &density_func);
     let intersections = find_intersections(&grid);
-    let (vertices, vertex_mapping) =
-        build_mesh_vertices(&intersections, &density_func, &material_func);
+
+    let vertex_mapping = build_vertex_mapping(&intersections);
     let indices = assemble_triangles(&grid, &vertex_mapping);
+
+    let vertices = build_mesh_vertices(&intersections, &indices, &density_func, &material_func);
 
     Mesh { vertices, indices }
 }
 
-// Return a collection of mesh vertices + a mapping of intersections to the new vertices.
+// Return a collection of mesh vertices
 // The vertices are in the same order they came in
 //
 // The vertices collection only contains actual vertices so its shorter than the intersections
 // collection which contains also None values.
-// For this reason a mapping of Intersection -> MeshVertex is required
+// For this reason a mapping of Intersection -> MeshVertex is required, see build_vertex_mapping
 fn build_mesh_vertices(
     intersections: &IntersectionContainer,
+    indices: &Vec<VertexIndex>,
     density_func: &impl Fn(Position) -> Real,
     material_func: &impl Fn(Position) -> MaterialBlend,
-) -> (Vec<MeshVertex>, IntersectionVertexMap) {
-    let build_vertex = |p| {
-        let normal = implicit::central_gradient(density_func, p);
-        let blend = material_func(p);
+) -> Vec<MeshVertex> {
+    let build_vertex = |vertex_position, vertex_normal: Vector3<Real>| {
+        let normal = implicit::central_gradient(density_func, vertex_position);
+        //let normal = vertex_normal.normalize();
+        let blend = material_func(vertex_position);
         let weights = blend.into_material_weights();
 
         MeshVertex {
-            position: [p.x as f32, p.y as f32, p.z as f32],
+            position: [
+                vertex_position.x as f32,
+                vertex_position.y as f32,
+                vertex_position.z as f32,
+            ],
             normal: [normal.x as f32, normal.y as f32, normal.z as f32],
             vertex_material_weights: weights,
-            //blend_coefficients: weights,
-            //blend_indices: indices,
         }
     };
 
-    let mut mapping = IntersectionVertexMap::new();
-    let mut vertices: Vec<MeshVertex> = Vec::new();
+    let vertex_positions: Vec<Position> = intersections
+        .iter()
+        .filter_map(|x| x.map(|pos| pos))
+        .collect();
 
-    let mut vertex_index: u32 = 0;
-    for intersection in intersections {
-        if let Some(intersection_position) = intersection {
-            vertices.push(build_vertex(*intersection_position));
-            mapping.push(Some(vertex_index));
-            vertex_index += 1;
-        } else {
-            mapping.push(None);
-        }
+    // The normals are iteratively built and are not normalized
+    let mut vertex_normals = vec![Vector3::<Real>::zero(); vertex_positions.len()];
+
+    for triangle_index in (0..indices.len()).step_by(3) {
+        let vertex_a_index = indices[triangle_index + 0] as usize;
+        let vertex_b_index = indices[triangle_index + 1] as usize;
+        let vertex_c_index = indices[triangle_index + 2] as usize;
+
+        // Triangle vertices
+        let a = vertex_positions[vertex_a_index];
+        let b = vertex_positions[vertex_b_index];
+        let c = vertex_positions[vertex_c_index];
+
+        // Sides of the triangle
+        let u = b - a;
+        let v = c - a;
+
+        let triangle_normal = u.cross(v);
+
+        vertex_normals[vertex_a_index] += triangle_normal;
+        vertex_normals[vertex_b_index] += triangle_normal;
+        vertex_normals[vertex_c_index] += triangle_normal;
     }
 
-    (vertices, mapping)
+    let vertices = vertex_positions
+        .iter()
+        .zip(vertex_normals.iter())
+        .map(|(pos, normal)| build_vertex(*pos, *normal))
+        .collect();
+
+    vertices
+}
+
+// Returnd a mapping of grid edges "intersections" to actual mesh vetices
+// For intersection at index i the map at index i contains the index of the vertex
+// or none, if there is no intersection
+fn build_vertex_mapping(intersections: &IntersectionContainer) -> IntersectionVertexMap {
+    let mut mapping = IntersectionVertexMap::with_capacity(intersections.len());
+
+    let mut vertex_index: VertexIndex = 0;
+    for intersection in intersections {
+        let mapping_value = if intersection.is_some() {
+            let index = vertex_index;
+            vertex_index += 1;
+
+            Some(index)
+        } else {
+            None
+        };
+
+        mapping.push(mapping_value);
+    }
+
+    mapping
 }
 
 // For each cell in the grid evaluate edges specified in EDGE_INDICES
@@ -172,8 +225,8 @@ fn find_intersections(grid: &Grid) -> IntersectionContainer {
     intersections
 }
 
-fn assemble_triangles(grid: &Grid, vertex_mapping: &IntersectionVertexMap) -> Vec<u32> {
-    let mut indices: Vec<u32> = Vec::new();
+fn assemble_triangles(grid: &Grid, vertex_mapping: &IntersectionVertexMap) -> Vec<VertexIndex> {
+    let mut indices: Vec<VertexIndex> = Vec::new();
     // Loop over the actual cubes, not individual grid vertices
     for z in 0..grid.depth - 1 {
         for y in 0..grid.height - 1 {
@@ -210,7 +263,7 @@ fn get_edge_intersections_for_cell(
     grid: &Grid,
     cell_position: GridPosition,
     vertex_mapping: &IntersectionVertexMap,
-) -> [Option<u32>; CUBE_EDGES] {
+) -> [Option<VertexIndex>; CUBE_EDGES] {
     let get_cube_vertex_index = |add_x: usize, add_y: usize, add_z: usize| {
         let grid_cell_position = add(cell_position, add_x, add_y, add_z);
         let cell_index = grid.get_index_for(grid_cell_position);
@@ -218,7 +271,7 @@ fn get_edge_intersections_for_cell(
         cell_index * INTERSECTION_STRIDE
     };
 
-    let get_edge_index = |cube_vertex_index: usize, edge: CellEdge| {
+    let get_mesh_vertex_index = |cube_vertex_index: usize, edge: CellEdge| {
         let edge_offset = match edge {
             CellEdge::Back => 0,
             CellEdge::Right => 1,
@@ -241,20 +294,20 @@ fn get_edge_intersections_for_cell(
 
     let edge_intersections = [
         // Bottom _ edges clockwise
-        get_edge_index(cube_blf, CellEdge::Back),
-        get_edge_index(cube_blb, CellEdge::Right),
-        get_edge_index(cube_brf, CellEdge::Back),
-        get_edge_index(cube_blf, CellEdge::Right),
+        get_mesh_vertex_index(cube_blf, CellEdge::Back),
+        get_mesh_vertex_index(cube_blb, CellEdge::Right),
+        get_mesh_vertex_index(cube_brf, CellEdge::Back),
+        get_mesh_vertex_index(cube_blf, CellEdge::Right),
         // top _ edges colockwise
-        get_edge_index(cube_tlf, CellEdge::Back),
-        get_edge_index(cube_tlb, CellEdge::Right),
-        get_edge_index(cube_trf, CellEdge::Back),
-        get_edge_index(cube_tlf, CellEdge::Right),
+        get_mesh_vertex_index(cube_tlf, CellEdge::Back),
+        get_mesh_vertex_index(cube_tlb, CellEdge::Right),
+        get_mesh_vertex_index(cube_trf, CellEdge::Back),
+        get_mesh_vertex_index(cube_tlf, CellEdge::Right),
         // | edges connecting bottom and top, clockwise
-        get_edge_index(cube_blf, CellEdge::Up),
-        get_edge_index(cube_blb, CellEdge::Up),
-        get_edge_index(cube_brb, CellEdge::Up),
-        get_edge_index(cube_brf, CellEdge::Up),
+        get_mesh_vertex_index(cube_blf, CellEdge::Up),
+        get_mesh_vertex_index(cube_blb, CellEdge::Up),
+        get_mesh_vertex_index(cube_brb, CellEdge::Up),
+        get_mesh_vertex_index(cube_brf, CellEdge::Up),
     ];
 
     edge_intersections

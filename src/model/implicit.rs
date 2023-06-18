@@ -13,7 +13,8 @@ use super::Position;
 use super::Real;
 
 // Radius of the cube used as the convolution kernel used for density evaluation
-const DENSITY_SIGMA: Coord = 0.8;
+// NOTE: if this is larger than 1.0, 1 block thick walls will disappear
+const DENSITY_SIGMA: Coord = 0.9;
 const KERNEL_VOLUME: Real = 8.0 * DENSITY_SIGMA * DENSITY_SIGMA * DENSITY_SIGMA;
 const KERNEL_VOLUME_HALF: Real = KERNEL_VOLUME / 2.0;
 const EPSILON: Real = 0.0001;
