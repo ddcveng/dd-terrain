@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use glium::texture::{RawImage2d, SrgbTexture2d};
+use glium::texture::{MipmapsOption, RawImage2d, SrgbTexture2d};
 
 use crate::config;
 
@@ -24,12 +24,13 @@ pub fn texture_from_file(filename: &str, facade: &glium::Display) -> SrgbTexture
     let pixels_raw = rgb_image_buffer.into_raw();
 
     let texture_data_source = RawImage2d::from_raw_rgb(pixels_raw, dimensions);
-    let texture = match SrgbTexture2d::new(facade, texture_data_source) {
-        Ok(tex) => tex,
-        Err(texture_creation_error) => {
-            panic!("failed to create texture - {texture_creation_error}!")
-        }
-    };
+    let texture =
+        match SrgbTexture2d::with_mipmaps(facade, texture_data_source, MipmapsOption::NoMipmap) {
+            Ok(tex) => tex,
+            Err(texture_creation_error) => {
+                panic!("failed to create texture - {texture_creation_error}!")
+            }
+        };
 
     texture
 }

@@ -191,6 +191,8 @@ pub fn central_gradient(f: impl Fn(Position) -> Real, point: Position) -> Vector
     let fprev_z = f(offset_position(point, Parameter::Z, true));
     let dz = fnext_z - fprev_z;
 
+    // Mathematically each term should be divided by 2*EPSILON but we are
+    // normalizing the vector anyway, so it doesn't matter
     Vector3::new(dx, dy, dz).normalize()
 }
 
