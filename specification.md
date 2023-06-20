@@ -23,7 +23,7 @@ perspective camera
     - rendering of rigid + smooth terrain with nice transitions between the two
 
 ## Comparison to existing work
-Many techniques for polygonizing volumetric data exist. The main inspirations for this project are the 2009 paper "arches" by XX and a mod for minecraft called "NoCubes".
+Many techniques for polygonizing volumetric data exist. The main inspirations for this project are the 2009 paper Arches: A framework for modeling complex terrains by Peytavie et al. and a mod for minecraft called "NoCubes".
 
 We will use the algorithm for extracting the smooth surface from *Arches* as well as the technique for texturing this surface.
 
