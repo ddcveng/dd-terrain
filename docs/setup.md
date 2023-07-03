@@ -6,6 +6,7 @@ and running rust projects.
 After that you can just run `cargo run --release` in the root of the repository and cargo
 will automatically resolve all dependencies and build and run the project. 
 The initial run will take a little longer since all the dependencies have to be installed.
+It is recommended to use the `--release` flag as the program runs significantly faster in release mode.
 
 ## Configuration
 There is a number of variables that can be tweaked to modify how the render looks.
