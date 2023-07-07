@@ -1,10 +1,13 @@
-use cgmath::{InnerSpace, Point3, Vector3, Zero};
+use cgmath::{Point3, Vector3, Zero};
 use glium::implement_vertex;
+use itertools::Itertools;
 
 use crate::{
     infrastructure::texture::MaterialBlend,
-    model::{implicit, Position, Real},
+    model::{Position, Real},
 };
+
+use crate::model::implicit::normal;
 
 // The jump in quality between 1.0 and 0.9 is insane!
 //
@@ -45,6 +48,13 @@ impl Mesh {
         other.indices.extend(indices_transformed);
 
         other.vertices.extend_from_slice(self.vertices.as_slice());
+    }
+
+    pub fn merge<'a>(meshes: impl Iterator<Item = &'a Mesh>) -> Self {
+        let mut merged_mesh = Mesh::empty();
+        meshes.for_each(|mesh| mesh.copy_into(&mut merged_mesh));
+
+        merged_mesh
     }
 }
 
@@ -106,12 +116,12 @@ pub fn polygonize(
 // For this reason a mapping of Intersection -> MeshVertex is required, see build_vertex_mapping
 fn build_mesh_vertices(
     intersections: &IntersectionContainer,
-    indices: &Vec<VertexIndex>,
+    _indices: &Vec<VertexIndex>,
     density_func: &impl Fn(Position) -> Real,
     material_func: &impl Fn(Position) -> MaterialBlend,
 ) -> Vec<MeshVertex> {
-    let build_vertex = |vertex_position, vertex_normal: Vector3<Real>| {
-        let normal = implicit::central_gradient(density_func, vertex_position);
+    let build_vertex = |vertex_position /*, vertex_normal: Vector3<Real>*/| {
+        let normal = normal::gradient(density_func, vertex_position);
         //let normal = vertex_normal.normalize();
         let blend = material_func(vertex_position);
         let weights = blend.into_material_weights();
@@ -132,6 +142,25 @@ fn build_mesh_vertices(
         .filter_map(|x| x.map(|pos| pos))
         .collect();
 
+    //let vertex_normals = build_triangle_normals(&vertex_positions, &indices);
+
+    let vertices = vertex_positions
+        .iter()
+        //.zip(vertex_normals.iter())
+        //.map(|(pos, normal)| build_vertex(*pos, *normal))
+        .map(|pos| build_vertex(*pos))
+        .collect();
+
+    vertices
+}
+
+// For each vertex returns the average of normals of its incident triangles
+// The normals are iteratively built and are not normalized
+#[allow(dead_code)]
+fn build_triangle_normals(
+    vertex_positions: &Vec<Position>,
+    indices: &Vec<VertexIndex>,
+) -> Vec<Vector3<Real>> {
     // The normals are iteratively built and are not normalized
     let mut vertex_normals = vec![Vector3::<Real>::zero(); vertex_positions.len()];
 
@@ -156,13 +185,7 @@ fn build_mesh_vertices(
         vertex_normals[vertex_c_index] += triangle_normal;
     }
 
-    let vertices = vertex_positions
-        .iter()
-        .zip(vertex_normals.iter())
-        .map(|(pos, normal)| build_vertex(*pos, *normal))
-        .collect();
-
-    vertices
+    vertex_normals
 }
 
 // Returnd a mapping of grid edges "intersections" to actual mesh vetices
@@ -400,34 +423,36 @@ struct Grid {
 }
 
 impl Grid {
-    pub fn new(support: Rectangle3D, density_function: &impl Fn(Position) -> Real) -> Self {
-        let mut grid_data: Vec<GridPoint> = Vec::new();
+    pub fn new(support: Rectangle3D, density_function: impl Fn(Position) -> Real) -> Self {
         let depth_cells = (support.depth / CELL_SIZE) as usize + 1;
         let height_cells = (support.height / CELL_SIZE) as usize + 1;
         let width_cells = (support.width / CELL_SIZE) as usize + 1;
 
         // Create the grid 1 cell bigger in all dimensions
         // this way we have information about all points within the grid
-        for z in 0..depth_cells {
-            for y in 0..height_cells {
-                for x in 0..width_cells {
-                    let point_position = Position {
-                        x: support.position.x + (x as Real) * CELL_SIZE,
-                        y: support.position.y + (y as Real) * CELL_SIZE,
-                        z: support.position.z + (z as Real) * CELL_SIZE,
-                    };
+        let grid_point_offsets: Vec<(usize, usize, usize)> = (0..depth_cells)
+            .cartesian_product(0..height_cells)
+            .cartesian_product(0..width_cells)
+            .map(|((z, y), x)| (x, y, z))
+            .collect();
 
-                    let point_density = density_function(point_position);
-                    grid_data.push(GridPoint {
-                        position: point_position,
-                        density: point_density,
-                        case: None,
-                    });
+        let grid_data: Vec<GridPoint> = grid_point_offsets
+            .into_iter()
+            .map(|(x, y, z)| {
+                let point_position = Position::new(
+                    support.position.x + (x as Real) * CELL_SIZE,
+                    support.position.y + (y as Real) * CELL_SIZE,
+                    support.position.z + (z as Real) * CELL_SIZE,
+                );
+                let point_density = density_function(point_position);
+
+                GridPoint {
+                    position: point_position,
+                    density: point_density,
+                    case: None,
                 }
-            }
-        }
-
-        //println!("Grid cells: {}", grid_data.len());
+            })
+            .collect();
 
         Grid {
             data: grid_data,

@@ -1,8 +1,10 @@
+use std::time::Instant;
+
 use glium::glutin::event::{Event, WindowEvent};
 use glium::glutin::event_loop::{ControlFlow, EventLoop};
 use glium::index::IndicesSource;
 use glium::texture::SrgbTexture2d;
-use glium::{uniform, Display, Frame, IndexBuffer, Surface, Texture2d};
+use glium::{uniform, Display, Frame, IndexBuffer, Surface};
 
 use glium::glutin::event::VirtualKeyCode;
 use glium::glutin::window::CursorGrabMode;
@@ -30,15 +32,13 @@ use minecraft::get_minecraft_chunk_position;
 
 mod model;
 use model::discrete::World;
-use model::implicit::{evaluate_density_rigid, get_gradient};
-use model::polygonize::{Mesh, MeshVertex, Rectangle3D};
-use model::{discrete, Position, Real};
+use model::implicit::smooth::{get_density, get_smooth_normal};
+use model::polygonize::MeshVertex;
+use model::{discrete, Real};
 
 mod config;
 mod scene;
-use scene::{NoInstance, Scene};
-
-use crate::model::PlanarPosition;
+use scene::{NoInstance, RenderPass};
 
 const DISCRETE_VS: &str = include_str!("shaders/discrete_vs.glsl");
 const DISCRETE_FS: &str = include_str!("shaders/discrete_fs.glsl");
@@ -48,25 +48,19 @@ const IMPLICIT_FS: &str = include_str!("shaders/implicit_fs.glsl");
 fn main() {
     let (event_loop, display) = create_window();
 
-    let texture = texture_from_file("block-palette-tiling.png", &display);
+    let block_pallette = texture_from_file("block-palette-tiling.png", &display);
 
     let mut world = discrete::World::new(config::SPAWN_POINT);
+    println!("dispatching mesh builder");
+    world.dispatch_mesh_builder();
+    println!("after mesh builder");
+
+    let mut camera = create_camera(display.get_framebuffer_dimensions());
 
     let mut discrete_scene = create_discrete_scene(&world, &display);
     let mut implicit_scene = create_implicit_scene(&world, &display);
 
     let mut imgui_data = ImguiWrapper::new(&display);
-    let dimensions = display.get_framebuffer_dimensions();
-    let aspect_ratio = dimensions.0 as Real / dimensions.1 as Real;
-    let mut camera = Camera::new(
-        config::SPAWN_POINT,
-        Point3::origin(),
-        Vector3::unit_y(),
-        config::FOVY,
-        aspect_ratio,
-        config::Z_NEAR,
-        config::Z_FAR,
-    );
 
     let mut render_state = RenderState::new();
     let mut actions: Vec<InputAction> = Vec::new();
@@ -91,15 +85,18 @@ fn main() {
             }
 
             camera.update(render_state.timing.delta_time.as_secs_f64());
-            let update_geometry = config::DYNAMIC_WORLD && world.update(camera.get_position());
-
+            let update_geometry =
+                config::DYNAMIC_WORLD && world.update_chunk_data(camera.get_position());
             if update_geometry {
                 let instance_positions = {
-                    let blocks = world.get_block_data();
+                    let blocks = world.get_surface_block_data(0, 320);
                     glium::vertex::VertexBuffer::new(&display, &blocks).unwrap()
                 };
                 discrete_scene.update_instance_data(instance_positions);
+            }
 
+            let update_implicit_scene = world.update_smooth_mesh();
+            if update_implicit_scene {
                 implicit_scene = create_implicit_scene(&world, &display);
             }
 
@@ -121,30 +118,20 @@ fn main() {
                     &mut target,
                     &camera,
                     &render_state,
-                    &texture,
+                    &block_pallette,
                 ),
-                RenderingMode::Implicit => {
-                    render_world(
-                        &implicit_scene,
-                        &mut target,
-                        &camera,
-                        &render_state,
-                        &texture,
-                    );
-                    //                    render_world(
-                    //                        &rigid_blocks_scene,
-                    //                        &mut target,
-                    //                        &camera,
-                    //                        &render_state,
-                    //                        &texture,
-                    //                    );
-                }
+                RenderingMode::Implicit => render_world(
+                    &implicit_scene,
+                    &mut target,
+                    &camera,
+                    &render_state,
+                    &block_pallette,
+                ),
             }
 
-            // Draw imgui last so it shows on top of everything
+            // Draw ui last so it shows on top of everything
             let imgui_frame_builder = get_imgui_builder(&render_state, &camera, &world);
             imgui_data.render(gl_window.window(), &mut target, imgui_frame_builder);
-            //imgui_data.render(gl_window.window(), &mut target);
 
             // Finish building the frame and swap buffers
             target.finish().expect("Failed to swap buffers");
@@ -169,52 +156,8 @@ fn to_uniform_matrix(matrix: &Matrix4<Real>) -> [[f32; 4]; 4] {
     array_init(|i| array_init(|j| matrix[i][j] as f32))
 }
 
-fn polygonize(world: &discrete::World) -> Mesh {
-    let xz_position = PlanarPosition::new(194.0, 175.0);
-    let support_size = 44.0;
-    let pos = Position::new(xz_position.x, 50.0, xz_position.y);
-
-    //    println!("-----------------------------------");
-    //    println!("Polygonizing grid from position {pos:?} with size {support_size}");
-
-    let support = Rectangle3D {
-        position: pos,
-        width: support_size,
-        height: support_size,
-        depth: support_size,
-    };
-
-    let density_func = |p| model::implicit::evaluate_density_rigid(world, p);
-    let material_func = |p| model::implicit::sample_materials(world, p);
-
-    model::polygonize::polygonize(support, density_func, material_func)
-}
-
-fn create_implicit_scene<'a>(
-    world: &World,
-    display: &Display,
-) -> Scene<'a, NoInstance, MeshVertex, IndexBuffer<u32>> {
-    let mesh = world.polygonize();
-    let vertex_buffer = glium::VertexBuffer::new(display, &mesh.vertices).unwrap();
-    let index_buffer = glium::IndexBuffer::new(
-        display,
-        glium::index::PrimitiveType::TrianglesList,
-        &mesh.indices,
-    )
-    .unwrap();
-
-    let fragment = RenderFragmentBuilder::new()
-        .set_geometry(vertex_buffer, index_buffer)
-        .set_vertex_shader(IMPLICIT_VS)
-        .set_fragment_shader(IMPLICIT_FS)
-        .build(display)
-        .unwrap();
-
-    Scene::new(fragment)
-}
-
 fn render_world<'a, D, T, I>(
-    scene: &'a Scene<'a, D, T, I>,
+    render_pass: &'a RenderPass<'a, D, T, I>,
     target: &mut Frame,
     camera: &Camera,
     state: &RenderState,
@@ -262,13 +205,7 @@ where
         ..Default::default()
     };
 
-    if let Some(instance_data) = &scene.instance_data {
-        scene
-            .fragment
-            .render_instanced(target, &uni, instance_data, Some(draw_parameters));
-    } else {
-        scene.fragment.render(target, &uni, Some(draw_parameters));
-    }
+    render_pass.execute(target, &uni, Some(draw_parameters));
 }
 
 fn get_imgui_builder(
@@ -284,8 +221,8 @@ fn get_imgui_builder(
     let block_at_position = world.get_block(position);
     let render_mode = state.render_mode;
 
-    let density = evaluate_density_rigid(world, position);
-    let gradient = get_gradient(world, position);
+    let density = get_density(world, position);
+    let gradient = get_smooth_normal(world, position);
 
     let builder = move |ui: &imgui::Ui| {
         ui.window("stats")
@@ -399,7 +336,8 @@ fn create_window() -> (EventLoop<()>, glium::Display) {
 fn create_discrete_scene<'a>(
     world: &World,
     display: &Display,
-) -> Scene<'a, model::chunk::BlockData, infrastructure::vertex::TexturedVertex, IndexBuffer<u32>> {
+) -> RenderPass<'a, model::chunk::BlockData, infrastructure::vertex::TexturedVertex, IndexBuffer<u32>>
+{
     let (vertex_buffer, indices) = geometry::cube_textured_exclusive_vertex(display);
     let instance_positions = {
         let blocks = world.get_surface_block_data(0, 320);
@@ -413,6 +351,43 @@ fn create_discrete_scene<'a>(
         .build(display)
         .unwrap();
 
-    let discrete_scene = Scene::new_instanced(cube_fragment, instance_positions);
-    discrete_scene
+    RenderPass::new_instanced(cube_fragment, instance_positions)
+}
+
+fn create_implicit_scene<'a>(
+    world: &World,
+    display: &Display,
+) -> RenderPass<'a, NoInstance, MeshVertex, IndexBuffer<u32>> {
+    let smooth_mesh = world.get_smooth_mesh();
+
+    let vertex_buffer = glium::VertexBuffer::new(display, &smooth_mesh.vertices).unwrap();
+    let index_buffer = glium::IndexBuffer::new(
+        display,
+        glium::index::PrimitiveType::TrianglesList,
+        &smooth_mesh.indices,
+    )
+    .unwrap();
+
+    let fragment = RenderFragmentBuilder::new()
+        .set_geometry(vertex_buffer, index_buffer)
+        .set_vertex_shader(IMPLICIT_VS)
+        .set_fragment_shader(IMPLICIT_FS)
+        .build(display)
+        .unwrap();
+
+    RenderPass::new(fragment)
+}
+
+fn create_camera(window_dimensions: (u32, u32)) -> Camera {
+    let aspect_ratio = window_dimensions.0 as Real / window_dimensions.1 as Real;
+
+    Camera::new(
+        config::SPAWN_POINT,
+        Point3::origin(),
+        Vector3::unit_y(),
+        config::FOVY,
+        aspect_ratio,
+        config::Z_NEAR,
+        config::Z_FAR,
+    )
 }

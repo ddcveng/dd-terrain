@@ -125,7 +125,7 @@ impl Camera {
 }
 
 impl InputConsumer for Camera {
-    fn consume(&mut self, action: &InputAction, state: &RenderState) -> () {
+    fn consume(&mut self, action: &InputAction, state: &RenderState) {
         match action {
             InputAction::BeginMove { dir } => match dir {
                 Direction::Forward => self.translation.z = -config::CAMERA_MOVE_SPEED,

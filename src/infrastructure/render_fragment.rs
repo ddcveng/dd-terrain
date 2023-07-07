@@ -11,10 +11,12 @@ use glium::VertexBuffer;
 #[derive(Debug)]
 pub enum FragmentCreationError {
     NoGeometry,
-    BadVertexShader,
 }
 
-// TODO: implement custom Uniforms type so I can manage it dynamically
+// This struct represents a single unit of rendering.
+// It couples geometry with a shader program that is used to render it.
+//
+// To obtain an instance use RenderFragmentBuilder
 pub struct RenderFragment<'a, T, I>
 where
     T: Copy,
@@ -92,8 +94,8 @@ where
     }
 }
 
-// TODO: add marker type to represent build state so invalid state
-// is not representable
+// TODO: use generics to represent the state machine of the builder.
+// That way invalid state will not compile
 pub struct RenderFragmentBuilder<'a, T, I /*, U*/>
 where
     T: Copy,

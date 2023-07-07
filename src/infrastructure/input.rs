@@ -15,7 +15,7 @@ pub enum Direction {
 }
 
 type Key = VirtualKeyCode;
-type MouseButton = glium::glutin::event::MouseButton;
+//type MouseButton = glium::glutin::event::MouseButton;
 
 #[derive(Debug)]
 pub enum InputAction {
@@ -23,8 +23,8 @@ pub enum InputAction {
     BeginMove { dir: Direction },
     EndMove { dir: Direction },
     CursorMoved { x: f64, y: f64 },
-    Scroll(f64, f64),
-    MousePressed { button: MouseButton },
+    //Scroll(f64, f64),
+    //MousePressed { button: MouseButton },
     KeyPressed { key: Key },
     Char { c: char },
     Capture,

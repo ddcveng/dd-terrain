@@ -111,6 +111,11 @@ vec3 get_projection_coefficients_arches(vec3 normal) {
     float beta = np.y / pnorm;
     float gamma = np.z / pnorm;
 
+    float sum = alpha + beta + gamma;
+    alpha /= sum;
+    beta /= sum;
+    gamma /= sum;
+
     return vec3(alpha, beta, gamma);
 }
 
@@ -130,7 +135,7 @@ vec4 assemble_color(vec3 world_position, vec3 normal) {
     float y = fract(world_position.y);
     float z = fract(world_position.z);
 
-    vec3 projection_coefficients = get_projection_coefficients(normal);
+    vec3 projection_coefficients = get_projection_coefficients_arches(normal);
     float alpha = projection_coefficients.x;
     float beta = projection_coefficients.y;
     float gamma = projection_coefficients.z;

@@ -24,6 +24,9 @@ pub fn texture_from_file(filename: &str, facade: &glium::Display) -> SrgbTexture
     let pixels_raw = rgb_image_buffer.into_raw();
 
     let texture_data_source = RawImage2d::from_raw_rgb(pixels_raw, dimensions);
+
+    // We are using very low resolution pixel art textures, so we do not want mipmaps
+    // Having them on only creates artefacts when sampling the texture
     let texture =
         match SrgbTexture2d::with_mipmaps(facade, texture_data_source, MipmapsOption::NoMipmap) {
             Ok(tex) => tex,

@@ -4,7 +4,7 @@ use super::material_tower::MaterialStack;
 use super::ChunkPosition;
 use crate::infrastructure::texture::MaterialBlend;
 use crate::minecraft;
-use crate::model::common::{get_pallette_texture_coords, is_rigid_block, BlockType};
+use crate::model::common::{get_pallette_texture_coords, is_rigid_block, BlockType, is_visible_block};
 use crate::model::rectangle::Rectangle;
 use crate::model::{Coord, Position, Real};
 
@@ -20,14 +20,11 @@ const EPSILON: Coord = 0.0001;
 pub struct BlockData {
     pub offset: [f32; 3],
     pub pallette_offset: [f32; 2],
-    //instance_color: [f32; 3],
-    //height: u32,
-    //block_type: u8,
 }
 implement_vertex!(
     BlockData,
     offset,
-    pallette_offset /*, instance_color, height*/
+    pallette_offset
 );
 
 const CHUNK_SIZE: usize = minecraft::BLOCKS_IN_CHUNK;

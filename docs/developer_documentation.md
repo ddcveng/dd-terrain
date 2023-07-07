@@ -153,6 +153,11 @@ Most of the code in `src/model/discrete.rs`, `src/model/chunk.rs` and `src/model
 revolves around making a query like this possible on the partitioned 3D voxel data.
 
 ### Creating the mesh
+We create the smooth mesh per chunk. The smaller chunk meshes are then stitched together to create one big mesh.
+Creating the mesh for a chunk requires that data for all neighboring chunks is loaded, otherwise it won't tile correctly.
+We solve this by ignoring the edge chunks in implicit mode. This means that when a *NxN* chunk world is loaded in discrete mode,
+implicit mode only displays *(N-1)x(N-1)* chunks.
+
 Creating a mesh of an implicit surface can be done in many ways.
 We implemented a technique known as **Marching Cubes**, but it isn't hard to implement other methods.
 To add another method of polygonization all that needs to be done is implement a function with the following signature

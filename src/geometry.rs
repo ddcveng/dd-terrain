@@ -3,26 +3,27 @@ use crate::model::common::BLOCK_TEXTURE_FRACTION;
 use glium::{index::PrimitiveType, Display, IndexBuffer, VertexBuffer};
 
 // colorful unit cube, each face has exclusive vertexes
+#[allow(dead_code)]
 pub fn cube_color_exclusive_vertex(display: &Display) -> (VertexBuffer<Vertex>, IndexBuffer<u32>) {
     // front face
     let color_red = [1.0, 0.0, 0.0];
     let front_normal = [0.0, 0.0, 1.0];
-    let front_dl = Vertex {
+    let front_down_left = Vertex {
         position: [-0.5, -0.5, 0.5],
         color: color_red,
         normal: front_normal,
     };
-    let front_dr = Vertex {
+    let front_down_right = Vertex {
         position: [0.5, -0.5, 0.5],
         color: color_red,
         normal: front_normal,
     };
-    let front_ul = Vertex {
+    let front_up_left = Vertex {
         position: [-0.5, 0.5, 0.5],
         color: color_red,
         normal: front_normal,
     };
-    let front_ur = Vertex {
+    let front_up_right = Vertex {
         position: [0.5, 0.5, 0.5],
         color: color_red,
         normal: front_normal,
@@ -31,24 +32,24 @@ pub fn cube_color_exclusive_vertex(display: &Display) -> (VertexBuffer<Vertex>, 
     // top face
     let color_green = [0.0, 1.0, 0.0];
     let top_normal = [0.0, 1.0, 0.0];
-    let top_dl = Vertex {
+    let top_down_left = Vertex {
         position: [-0.5, 0.5, 0.5],
         color: color_green,
         normal: top_normal,
     };
 
-    let top_dr = Vertex {
+    let top_down_right = Vertex {
         position: [0.5, 0.5, 0.5],
         color: color_green,
         normal: top_normal,
     };
 
-    let top_ul = Vertex {
+    let top_up_left = Vertex {
         position: [-0.5, 0.5, -0.5],
         color: color_green,
         normal: top_normal,
     };
-    let top_ur = Vertex {
+    let top_up_right = Vertex {
         position: [0.5, 0.5, -0.5],
         color: color_green,
         normal: top_normal,
@@ -57,22 +58,22 @@ pub fn cube_color_exclusive_vertex(display: &Display) -> (VertexBuffer<Vertex>, 
     // back face
     let color_blue = [0.0, 0.0, 1.0];
     let back_normal = [0.0, 0.0, -1.0];
-    let back_dl = Vertex {
+    let back_down_left = Vertex {
         position: [0.5, -0.5, -0.5],
         color: color_blue,
         normal: back_normal,
     };
-    let back_dr = Vertex {
+    let back_down_right = Vertex {
         position: [-0.5, -0.5, -0.5],
         color: color_blue,
         normal: back_normal,
     };
-    let back_ul = Vertex {
+    let back_up_left = Vertex {
         position: [0.5, 0.5, -0.5],
         color: color_blue,
         normal: back_normal,
     };
-    let back_ur = Vertex {
+    let back_up_right = Vertex {
         position: [-0.5, 0.5, -0.5],
         color: color_blue,
         normal: back_normal,
@@ -81,22 +82,22 @@ pub fn cube_color_exclusive_vertex(display: &Display) -> (VertexBuffer<Vertex>, 
     // bottom face
     let color_yellow = [0.5, 0.5, 0.0];
     let bottom_normal = [0.0, -1.0, 0.0];
-    let bottom_dl = Vertex {
+    let bottom_down_left = Vertex {
         position: [-0.5, -0.5, -0.5],
         color: color_yellow,
         normal: bottom_normal,
     };
-    let bottom_dr = Vertex {
+    let bottom_down_right = Vertex {
         position: [0.5, -0.5, -0.5],
         color: color_yellow,
         normal: bottom_normal,
     };
-    let bottom_ul = Vertex {
+    let bottom_up_left = Vertex {
         position: [-0.5, -0.5, 0.5],
         color: color_yellow,
         normal: bottom_normal,
     };
-    let bottom_ur = Vertex {
+    let bottom_up_right = Vertex {
         position: [0.5, -0.5, 0.5],
         color: color_yellow,
         normal: bottom_normal,
@@ -105,22 +106,22 @@ pub fn cube_color_exclusive_vertex(display: &Display) -> (VertexBuffer<Vertex>, 
     // left face
     let color_magenta = [0.5, 0.0, 0.5];
     let left_normal = [-1.0, 0.0, 0.0];
-    let left_dl = Vertex {
+    let left_down_left = Vertex {
         position: [-0.5, -0.5, -0.5],
         color: color_magenta,
         normal: left_normal,
     };
-    let left_dr = Vertex {
+    let left_down_right = Vertex {
         position: [-0.5, -0.5, 0.5],
         color: color_magenta,
         normal: left_normal,
     };
-    let left_ul = Vertex {
+    let left_up_left = Vertex {
         position: [-0.5, 0.5, -0.5],
         color: color_magenta,
         normal: left_normal,
     };
-    let left_ur = Vertex {
+    let left_up_right = Vertex {
         position: [-0.5, 0.5, 0.5],
         color: color_magenta,
         normal: left_normal,
@@ -129,31 +130,52 @@ pub fn cube_color_exclusive_vertex(display: &Display) -> (VertexBuffer<Vertex>, 
     // right face
     let color_cyan = [0.0, 0.5, 0.5];
     let right_normal = [1.0, 0.0, 0.0];
-    let right_dl = Vertex {
+    let right_down_left = Vertex {
         position: [0.5, -0.5, 0.5],
         color: color_cyan,
         normal: right_normal,
     };
-    let right_dr = Vertex {
+    let right_down_right = Vertex {
         position: [0.5, -0.5, -0.5],
         color: color_cyan,
         normal: right_normal,
     };
-    let right_ul = Vertex {
+    let right_up_left = Vertex {
         position: [0.5, 0.5, 0.5],
         color: color_cyan,
         normal: right_normal,
     };
-    let right_ur = Vertex {
+    let right_up_right = Vertex {
         position: [0.5, 0.5, -0.5],
         color: color_cyan,
         normal: right_normal,
     };
 
     let shape = vec![
-        front_dl, front_dr, front_ul, front_ur, top_dl, top_dr, top_ul, top_ur, back_dl, back_dr,
-        back_ul, back_ur, bottom_dl, bottom_dr, bottom_ul, bottom_ur, left_dl, left_dr, left_ul,
-        left_ur, right_dl, right_dr, right_ul, right_ur,
+        front_down_left,
+        front_down_right,
+        front_up_left,
+        front_up_right,
+        top_down_left,
+        top_down_right,
+        top_up_left,
+        top_up_right,
+        back_down_left,
+        back_down_right,
+        back_up_left,
+        back_up_right,
+        bottom_down_left,
+        bottom_down_right,
+        bottom_up_left,
+        bottom_up_right,
+        left_down_left,
+        left_down_right,
+        left_up_left,
+        left_up_right,
+        right_down_left,
+        right_down_right,
+        right_up_left,
+        right_up_right,
     ];
     let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
 
@@ -174,22 +196,22 @@ pub fn cube_textured_exclusive_vertex(
 ) -> (VertexBuffer<TexturedVertex>, IndexBuffer<u32>) {
     // front face
     let front_normal = [0.0, 0.0, 1.0];
-    let front_dl = TexturedVertex {
+    let front_down_left = TexturedVertex {
         position: [-0.5, -0.5, 0.5],
         normal: front_normal,
         texture_coordinates: [0.0, 0.0],
     };
-    let front_dr = TexturedVertex {
+    let front_down_right = TexturedVertex {
         position: [0.5, -0.5, 0.5],
         normal: front_normal,
         texture_coordinates: [TEXTURE_END, 0.0],
     };
-    let front_ul = TexturedVertex {
+    let front_up_left = TexturedVertex {
         position: [-0.5, 0.5, 0.5],
         normal: front_normal,
         texture_coordinates: [0.0, TEXTURE_END],
     };
-    let front_ur = TexturedVertex {
+    let front_up_right = TexturedVertex {
         position: [0.5, 0.5, 0.5],
         normal: front_normal,
         texture_coordinates: [TEXTURE_END, TEXTURE_END],
@@ -197,22 +219,22 @@ pub fn cube_textured_exclusive_vertex(
 
     // top face
     let top_normal = [0.0, 1.0, 0.0];
-    let top_dl = TexturedVertex {
+    let top_down_left = TexturedVertex {
         position: [-0.5, 0.5, 0.5],
         normal: top_normal,
         texture_coordinates: [0.0, 0.0],
     };
-    let top_dr = TexturedVertex {
+    let top_down_right = TexturedVertex {
         position: [0.5, 0.5, 0.5],
         normal: top_normal,
         texture_coordinates: [TEXTURE_END, 0.0],
     };
-    let top_ul = TexturedVertex {
+    let top_up_left = TexturedVertex {
         position: [-0.5, 0.5, -0.5],
         normal: top_normal,
         texture_coordinates: [0.0, TEXTURE_END],
     };
-    let top_ur = TexturedVertex {
+    let top_up_right = TexturedVertex {
         position: [0.5, 0.5, -0.5],
         normal: top_normal,
         texture_coordinates: [TEXTURE_END, TEXTURE_END],
@@ -220,22 +242,22 @@ pub fn cube_textured_exclusive_vertex(
 
     // back face
     let back_normal = [0.0, 0.0, -1.0];
-    let back_dl = TexturedVertex {
+    let back_down_left = TexturedVertex {
         position: [0.5, -0.5, -0.5],
         normal: back_normal,
         texture_coordinates: [0.0, 0.0],
     };
-    let back_dr = TexturedVertex {
+    let back_down_right = TexturedVertex {
         position: [-0.5, -0.5, -0.5],
         normal: back_normal,
         texture_coordinates: [TEXTURE_END, 0.0],
     };
-    let back_ul = TexturedVertex {
+    let back_up_left = TexturedVertex {
         position: [0.5, 0.5, -0.5],
         normal: back_normal,
         texture_coordinates: [0.0, TEXTURE_END],
     };
-    let back_ur = TexturedVertex {
+    let back_up_right = TexturedVertex {
         position: [-0.5, 0.5, -0.5],
         normal: back_normal,
         texture_coordinates: [TEXTURE_END, TEXTURE_END],
@@ -243,22 +265,22 @@ pub fn cube_textured_exclusive_vertex(
 
     // bottom face
     let bottom_normal = [0.0, -1.0, 0.0];
-    let bottom_dl = TexturedVertex {
+    let bottom_down_left = TexturedVertex {
         position: [-0.5, -0.5, -0.5],
         normal: bottom_normal,
         texture_coordinates: [0.0, 0.0],
     };
-    let bottom_dr = TexturedVertex {
+    let bottom_down_right = TexturedVertex {
         position: [0.5, -0.5, -0.5],
         normal: bottom_normal,
         texture_coordinates: [TEXTURE_END, 0.0],
     };
-    let bottom_ul = TexturedVertex {
+    let bottom_up_left = TexturedVertex {
         position: [-0.5, -0.5, 0.5],
         normal: bottom_normal,
         texture_coordinates: [0.0, TEXTURE_END],
     };
-    let bottom_ur = TexturedVertex {
+    let bottom_up_right = TexturedVertex {
         position: [0.5, -0.5, 0.5],
         normal: bottom_normal,
         texture_coordinates: [TEXTURE_END, TEXTURE_END],
@@ -266,22 +288,22 @@ pub fn cube_textured_exclusive_vertex(
 
     // left face
     let left_normal = [-1.0, 0.0, 0.0];
-    let left_dl = TexturedVertex {
+    let left_down_left = TexturedVertex {
         position: [-0.5, -0.5, -0.5],
         normal: left_normal,
         texture_coordinates: [0.0, 0.0],
     };
-    let left_dr = TexturedVertex {
+    let left_down_right = TexturedVertex {
         position: [-0.5, -0.5, 0.5],
         normal: left_normal,
         texture_coordinates: [TEXTURE_END, 0.0],
     };
-    let left_ul = TexturedVertex {
+    let left_up_left = TexturedVertex {
         position: [-0.5, 0.5, -0.5],
         normal: left_normal,
         texture_coordinates: [0.0, TEXTURE_END],
     };
-    let left_ur = TexturedVertex {
+    let left_up_right = TexturedVertex {
         position: [-0.5, 0.5, 0.5],
         normal: left_normal,
         texture_coordinates: [TEXTURE_END, TEXTURE_END],
@@ -289,31 +311,52 @@ pub fn cube_textured_exclusive_vertex(
 
     // right face
     let right_normal = [1.0, 0.0, 0.0];
-    let right_dl = TexturedVertex {
+    let right_down_left = TexturedVertex {
         position: [0.5, -0.5, 0.5],
         normal: right_normal,
         texture_coordinates: [0.0, 0.0],
     };
-    let right_dr = TexturedVertex {
+    let right_down_right = TexturedVertex {
         position: [0.5, -0.5, -0.5],
         normal: right_normal,
         texture_coordinates: [TEXTURE_END, 0.0],
     };
-    let right_ul = TexturedVertex {
+    let right_up_left = TexturedVertex {
         position: [0.5, 0.5, 0.5],
         normal: right_normal,
         texture_coordinates: [0.0, TEXTURE_END],
     };
-    let right_ur = TexturedVertex {
+    let right_up_right = TexturedVertex {
         position: [0.5, 0.5, -0.5],
         normal: right_normal,
         texture_coordinates: [TEXTURE_END, TEXTURE_END],
     };
 
     let shape = vec![
-        front_dl, front_dr, front_ul, front_ur, top_dl, top_dr, top_ul, top_ur, back_dl, back_dr,
-        back_ul, back_ur, bottom_dl, bottom_dr, bottom_ul, bottom_ur, left_dl, left_dr, left_ul,
-        left_ur, right_dl, right_dr, right_ul, right_ur,
+        front_down_left,
+        front_down_right,
+        front_up_left,
+        front_up_right,
+        top_down_left,
+        top_down_right,
+        top_up_left,
+        top_up_right,
+        back_down_left,
+        back_down_right,
+        back_up_left,
+        back_up_right,
+        bottom_down_left,
+        bottom_down_right,
+        bottom_up_left,
+        bottom_up_right,
+        left_down_left,
+        left_down_right,
+        left_up_left,
+        left_up_right,
+        right_down_left,
+        right_down_right,
+        right_up_left,
+        right_up_right,
     ];
     let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
 

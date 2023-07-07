@@ -14,7 +14,7 @@ mod marching_cubes;
 
 pub fn polygonize(
     support: Rectangle3D,
-    density_func: impl Fn(Position) -> Real,
+    density_func: impl Fn(Position) -> Real + Send + Sync,
     material_func: impl Fn(Position) -> MaterialBlend,
     //method: PolygonizationMethod,
 ) -> Mesh {
