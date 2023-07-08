@@ -25,24 +25,19 @@ type DDChunk = crate::model::chunk::Chunk;
 pub const CHUNKS_IN_REGION: usize = 32;
 pub const BLOCKS_IN_CHUNK: usize = 16;
 
-pub fn get_chunk(region_loader: &RegionFileLoader, chunk_position: ChunkPosition) -> DDChunk {
+pub fn get_chunk(/*region_loader: &RegionFileLoader,*/ chunk_position: ChunkPosition,) -> DDChunk {
     let mut dd_chunk = DDChunk::new(chunk_position);
-    let now = Instant::now();
 
-    let Ok(Some(mut region)) = region_loader.region(
-        fastanvil::RCoord(chunk_position.region_x as isize),
-        fastanvil::RCoord(chunk_position.region_z as isize),
-    ) else {
-        return dd_chunk;
-    };
+    //    let Ok(Some(mut region)) = region_loader.region(
+    //        fastanvil::RCoord(chunk_position.region_x as isize),
+    //        fastanvil::RCoord(chunk_position.region_z as isize),
+    //    ) else {
+    //        return dd_chunk;
+    //    };
 
-    //    let region_file_path = build_region_filepath(chunk_position.region_x, chunk_position.region_z);
-    //    let file = std::fs::File::open(region_file_path).unwrap();
-    //    let mut region = Region::from_stream(file).unwrap();
-
-    let elapsed = now.elapsed();
-    println!("loading region took {elapsed:.2?}");
-
+    let region_file_path = build_region_filepath(chunk_position.region_x, chunk_position.region_z);
+    let file = std::fs::File::open(region_file_path).unwrap();
+    let mut region = Region::from_stream(file).unwrap();
     let now = Instant::now();
 
     let data = match region.read_chunk(chunk_position.chunk_x, chunk_position.chunk_z) {
@@ -63,13 +58,13 @@ pub fn get_chunk(region_loader: &RegionFileLoader, chunk_position: ChunkPosition
     };
 
     let elapsed = now.elapsed();
-    println!("reading chunk took {elapsed:.2?}");
+    //println!("reading chunk took {elapsed:.2?}");
 
     let now = Instant::now();
     let chunk: CurrentJavaChunk = from_bytes(data.as_slice()).unwrap();
 
     let elapsed = now.elapsed();
-    println!("parsing chunk took {elapsed:.2?}");
+    //println!("parsing chunk took {elapsed:.2?}");
 
     let now = Instant::now();
 
@@ -137,19 +132,19 @@ pub fn get_chunk(region_loader: &RegionFileLoader, chunk_position: ChunkPosition
     }
 
     let elapsed = now.elapsed();
-    println!("block loop took {elapsed:.2?}");
+    //println!("block loop took {elapsed:.2?}");
 
     dd_chunk
 }
 
-//fn build_region_filepath(region_x: i32, region_z: i32) -> String {
-//    let region_file_name = format!("r.{}.{}.mca", region_x, region_z);
-//    let region_file_path = Path::new(config::WORLD_FOLDER)
-//        .join("region")
-//        .join(region_file_name);
-//
-//    region_file_path.to_str().unwrap().to_owned()
-//}
+fn build_region_filepath(region_x: i32, region_z: i32) -> String {
+    let region_file_name = format!("r.{}.{}.mca", region_x, region_z);
+    let region_file_path = Path::new(config::WORLD_FOLDER)
+        .join("region")
+        .join(region_file_name);
+
+    region_file_path.to_str().unwrap().to_owned()
+}
 
 fn get_block_type(block_id: &str) -> BlockType {
     match block_id {

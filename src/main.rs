@@ -85,11 +85,13 @@ fn main() {
             }
 
             camera.update(render_state.timing.delta_time.as_secs_f64());
+
             let update_geometry =
                 config::DYNAMIC_WORLD && world.update_chunk_data(camera.get_position());
+
             if update_geometry {
                 let instance_positions = {
-                    let blocks = world.get_surface_block_data(0, 320);
+                    let blocks = world.get_surface_block_data();
                     glium::vertex::VertexBuffer::new(&display, &blocks).unwrap()
                 };
                 discrete_scene.update_instance_data(instance_positions);
@@ -340,7 +342,7 @@ fn create_discrete_scene<'a>(
 {
     let (vertex_buffer, indices) = geometry::cube_textured_exclusive_vertex(display);
     let instance_positions = {
-        let blocks = world.get_surface_block_data(0, 320);
+        let blocks = world.get_surface_block_data();
         glium::vertex::VertexBuffer::new(display, &blocks).unwrap()
     };
 

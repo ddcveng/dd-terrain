@@ -3,7 +3,7 @@ use crate::{
     model::{Coord, PlanarPosition},
 };
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ChunkPosition {
     pub region_x: i32,
     pub region_z: i32,

@@ -27,6 +27,15 @@ implement_vertex!(
     pallette_offset
 );
 
+impl BlockData {
+    pub fn create(offset: Position, material: BlockType) -> Self {
+        BlockData {
+            offset: [offset.x as f32, offset.y as f32, offset.z as f32],
+            pallette_offset: get_pallette_texture_coords(material),
+        }
+    }
+}
+
 const CHUNK_SIZE: usize = minecraft::BLOCKS_IN_CHUNK;
 
 #[derive(Clone, Copy)]
@@ -39,6 +48,8 @@ pub struct RigidBlockRecord {
 pub struct Chunk {
     data: [MaterialStack; CHUNK_SIZE * CHUNK_SIZE],
     rigid_blocks: Vec<RigidBlockRecord>,
+
+    pub surface_blocks: Vec<BlockData>,
 
     // This is the position of the bottom left corner of the chunk from a top down view
     pub position: ChunkPosition,
@@ -90,6 +101,7 @@ impl Chunk {
         Chunk {
             data: array_init(|_inx| MaterialStack::new()),
             rigid_blocks: Vec::new(),
+            surface_blocks: Vec::new(),
             position: chunk_position,
         }
     }
@@ -199,6 +211,67 @@ impl Chunk {
                     (position, material)
                 })
         })
+    }
+
+    pub fn build_surface(&mut self) {
+        let chunk_base = self.position.get_global_position();
+
+        // Include all inner blocks that have at least 1 invisible neighbor
+        for ((_, lower_row), (row_index, center_row), (_, upper_row)) in self.data.chunks(16).enumerate().tuple_windows() {
+            println!("row_index: {row_index}");
+            for column_index in 1..15 {
+                let left_tower = &center_row[column_index - 1];
+                let center_tower = &center_row[column_index];
+                let right_tower = &center_row[column_index + 1];
+                let upper_tower = &upper_row[column_index];
+                let lower_tower = &lower_row[column_index];
+
+                let x_offset = chunk_base.x + column_index as Coord;
+                let z_offset = chunk_base.y + row_index as Coord;
+
+                for depth in -63..319 {
+                    let center_block = center_tower.get_block_at_y(depth);
+                    if !is_visible_block(center_block) {
+                        continue;
+                    }
+
+                    let front_block = center_tower.get_block_at_y(depth - 1);
+                    let back_block = center_tower.get_block_at_y(depth + 1);
+                    let left_block = left_tower.get_block_at_y(depth);
+                    let right_block = right_tower.get_block_at_y(depth);
+                    let lower_block = lower_tower.get_block_at_y(depth);
+                    let upper_block = upper_tower.get_block_at_y(depth);
+
+                    let neighborhood = [front_block, back_block, left_block, right_block, lower_block, upper_block];
+                    if neighborhood.into_iter().any(|block| !is_visible_block(block)) {
+                        let block_offset = Position::new(x_offset, depth as Coord, z_offset);
+
+                        let block_data = BlockData::create(block_offset, center_block);
+                        self.surface_blocks.push(block_data);
+                    }
+                }
+            }
+        }
+
+        // Include all edge blocks
+        for i in 0..self.data.len() {
+            let column = i % 16;
+            let row = i / 16;
+
+            let is_edge = column == 0 || row == 0 || column == 15 || row == 15;
+            if is_edge {
+                let tower = &self.data[i];
+                let tower_blocks = tower.iter_visible_blocks().map(|(depth, material)| {
+                    let x_offset = chunk_base.x + column as Coord;
+                    let z_offset = chunk_base.y + row as Coord;
+                    let block_offset = Position::new(x_offset, depth as Coord, z_offset);
+
+                    BlockData::create(block_offset, material)
+                });
+
+                self.surface_blocks.extend(tower_blocks);
+            }
+        }
     }
 
     // Returns None if there are no rigid blocks
