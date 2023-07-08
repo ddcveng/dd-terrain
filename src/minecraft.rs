@@ -140,7 +140,7 @@ pub fn get_chunk(/*region_loader: &RegionFileLoader,*/ chunk_position: ChunkPosi
 fn build_region_filepath(region_x: i32, region_z: i32) -> String {
     let region_file_name = format!("r.{}.{}.mca", region_x, region_z);
     let region_file_path = Path::new(config::WORLD_FOLDER)
-        .join("region")
+        //.join("region")
         .join(region_file_name);
 
     region_file_path.to_str().unwrap().to_owned()
