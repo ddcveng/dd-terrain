@@ -1,5 +1,4 @@
 use array_init::array_init;
-use fastanvil::RegionFileLoader;
 use itertools;
 use itertools::Itertools;
 use lazy_init::Lazy;

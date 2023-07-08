@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use glium::glutin::event::{Event, WindowEvent};
 use glium::glutin::event_loop::{ControlFlow, EventLoop};
 use glium::index::IndicesSource;
@@ -48,7 +46,7 @@ const IMPLICIT_FS: &str = include_str!("shaders/implicit_fs.glsl");
 fn main() {
     let (event_loop, display) = create_window();
 
-    let block_pallette = texture_from_file("block-palette-tiling.png", &display);
+    let block_pallette = texture_from_file("block-palette.png", &display);
 
     let mut world = discrete::World::new(config::SPAWN_POINT);
     println!("dispatching mesh builder");
