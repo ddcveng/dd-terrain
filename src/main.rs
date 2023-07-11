@@ -12,7 +12,7 @@ use array_init::array_init;
 use cgmath::{EuclideanSpace, Matrix4, Point3, Vector3};
 
 mod imgui_wrapper;
-use imgui_wrapper::ImguiWrapper;
+use imgui_wrapper::{ImguiWrapper, SmoothMeshOptions, UIWindowBuilder};
 
 mod minecraft;
 
@@ -31,12 +31,14 @@ use minecraft::get_minecraft_chunk_position;
 mod model;
 use model::discrete::World;
 use model::implicit::smooth::{get_density, get_smooth_normal};
-use model::polygonize::MeshVertex;
+use model::polygonize::{MeshVertex, PolygonizationOptions};
 use model::{discrete, Real};
 
 mod config;
 mod scene;
 use scene::{NoInstance, RenderPass};
+
+mod macros;
 
 const DISCRETE_VS: &str = include_str!("shaders/discrete_vs.glsl");
 const DISCRETE_FS: &str = include_str!("shaders/discrete_fs.glsl");
@@ -48,10 +50,11 @@ fn main() {
 
     let block_pallette = texture_from_file("block-palette.png", &display);
 
+    let mut controls = SmoothMeshOptions::default();
+    let mut polygonization_options = controls.into();
+
     let mut world = discrete::World::new(config::SPAWN_POINT);
-    println!("dispatching mesh builder");
-    world.dispatch_mesh_builder();
-    println!("after mesh builder");
+    world.dispatch_mesh_builder(polygonization_options);
 
     let mut camera = create_camera(display.get_framebuffer_dimensions());
 
@@ -76,6 +79,13 @@ fn main() {
             };
             render_state = new_state;
 
+            if controls.apply {
+                polygonization_options = controls.into();
+                world.rebuild_all_meshes(polygonization_options);
+
+                controls.apply = false;
+            }
+
             imgui_data.prepare(gl_window.window(), render_state.timing.delta_time);
 
             for action in &actions {
@@ -84,8 +94,8 @@ fn main() {
 
             camera.update(render_state.timing.delta_time.as_secs_f64());
 
-            let update_geometry =
-                config::DYNAMIC_WORLD && world.update_chunk_data(camera.get_position());
+            let update_geometry = config::DYNAMIC_WORLD
+                && world.update_chunk_data(camera.get_position(), polygonization_options);
 
             if update_geometry {
                 let instance_positions = {
@@ -130,8 +140,15 @@ fn main() {
             }
 
             // Draw ui last so it shows on top of everything
-            let imgui_frame_builder = get_imgui_builder(&render_state, &camera, &world);
-            imgui_data.render(gl_window.window(), &mut target, imgui_frame_builder);
+            let statistics_menu_builder =
+                get_statistics_menu_builder(&render_state, &camera, &world, polygonization_options);
+            let controls_menu = get_controls_menu_builder();
+
+            imgui_data.add_window(statistics_menu_builder);
+            imgui_data.add_window(controls_menu);
+            imgui_data
+                .render_frame(gl_window.window(), &mut target, &mut controls)
+                .expect("Failed to render imgui ui!");
 
             // Finish building the frame and swap buffers
             target.finish().expect("Failed to swap buffers");
@@ -208,11 +225,37 @@ where
     render_pass.execute(target, &uni, Some(draw_parameters));
 }
 
-fn get_imgui_builder(
+fn get_controls_menu_builder() -> UIWindowBuilder {
+    let builder = move |ui: &imgui::Ui, controls: &mut SmoothMeshOptions| {
+        ui.window("controls")
+            .size([300.0, 150.0], imgui::Condition::FirstUseEver)
+            .position([60.0, 300.0], imgui::Condition::FirstUseEver)
+            .build(|| {
+                ui.slider_config("Mesh detail", 1, 4)
+                    .build(&mut controls.mesh_resolution_level);
+                ui.slider_config("Smoothness", 1, 6)
+                    .build(&mut controls.smoothness_level);
+
+                let y_low = controls.y_low_limit;
+                let y_range_max = (383 - y_low as isize).max(2) as usize;
+                ui.slider_config("Limit Y", -64, 383)
+                    .build(&mut controls.y_low_limit);
+                ui.slider_config("Y Range", 1, y_range_max)
+                    .build(&mut controls.y_size);
+                ui.separator();
+                controls.apply |= ui.button_with_size("APPLY", [0.0, 0.0]);
+            });
+    };
+
+    Box::new(builder)
+}
+
+fn get_statistics_menu_builder(
     state: &RenderState,
     camera: &Camera,
     world: &discrete::World,
-) -> impl FnOnce(&imgui::Ui) {
+    poly_options: PolygonizationOptions,
+) -> UIWindowBuilder {
     let position = camera.get_position();
     let direction = camera.get_direction();
     let fps = state.timing.fps();
@@ -221,11 +264,12 @@ fn get_imgui_builder(
     let block_at_position = world.get_block(position);
     let render_mode = state.render_mode;
 
-    let density = get_density(world, position);
-    let gradient = get_smooth_normal(world, position);
+    let density = get_density(world, position, poly_options.kernel_size);
+    let gradient = get_smooth_normal(world, position, poly_options.kernel_size);
 
-    let builder = move |ui: &imgui::Ui| {
+    let builder = move |ui: &imgui::Ui, _: &mut SmoothMeshOptions| {
         ui.window("stats")
+            .position([60.0, 60.0], imgui::Condition::FirstUseEver)
             //.size([270.0, 120.0], imgui::Condition::FirstUseEver)
             .build(|| {
                 ui.text(format!("fps: {:.2}", fps));
@@ -261,7 +305,7 @@ fn get_imgui_builder(
             });
     };
 
-    builder
+    Box::new(builder)
 }
 
 fn create_state(

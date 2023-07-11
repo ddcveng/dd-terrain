@@ -11,19 +11,20 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::Instant;
 
 use crate::config;
 use crate::config::WORLD_SIZE;
 use crate::get_minecraft_chunk_position;
 use crate::minecraft;
 use crate::model::implicit::smooth::polygonize_chunk;
+use crate::time_it;
 
 use super::chunk::{BlockData, Chunk, ChunkPosition};
 use super::common::get_pallette_texture_coords;
 use super::common::is_visible_block;
 use super::common::BlockType;
 use super::polygonize::Mesh;
+use super::polygonize::PolygonizationOptions;
 use super::Coord;
 use super::Position;
 
@@ -296,7 +297,11 @@ impl World {
     }
 
     // Returns true if a new part of the world was loaded
-    pub fn update_chunk_data(&mut self, new_position: Position) -> bool {
+    pub fn update_chunk_data(
+        &mut self,
+        new_position: Position,
+        options: PolygonizationOptions,
+    ) -> bool {
         // this method does not do the actual updating
         // instead, it will manage the worker thread that does it.
         // the can only be 1 ongoing update at a time.
@@ -330,8 +335,7 @@ impl World {
         // There is no update running, or it has finished, itegrate the changes, if any.
         let world_data_updated = self.integrate_world_change();
         if world_data_updated {
-            // rebuild surface
-            self.dispatch_mesh_builder();
+            self.dispatch_mesh_builder(options);
         }
 
         // Check whether we need to update and dispatch the update task.
@@ -341,7 +345,14 @@ impl World {
             let chunks = self.get_chunks();
             let direction_of_change = get_difference(&self.center, &center_chunk_position);
 
-            let handle = thread::spawn(move || World::offset_chunks(chunks, direction_of_change));
+            let handle = thread::spawn(move || {
+                time_it!(
+                    "Offset chunks",
+                    let x = World::offset_chunks(chunks, direction_of_change);
+                );
+
+                x
+            });
             self.world_change = Some(WorldChange(center_chunk_position, handle));
         }
 
@@ -351,7 +362,7 @@ impl World {
     // Returns whether any meshes were updated.
     //
     // We only return true in case a whole batch was finished,
-    // even if we have some meshed queued up.
+    // even if we have some meshes queued up.
     pub fn update_smooth_mesh(&mut self) -> bool {
         self.integrate_built_meshes();
         let any_finished = self.join_finished_workers();
@@ -437,7 +448,7 @@ impl World {
                     println!("The following errors occured when trying to send to the channel:\n {error_message}");
                 }
                 Err(panic_message) => println!("Worker thread panicked! - {panic_message:?}"),
-                _ => println!("Successfully joined worker thread."),
+                _ => (), /* println!("Successfully joined worker thread.") */
             };
         }
 
@@ -463,9 +474,12 @@ impl World {
         let swappable_chunks_iterator = x_iter
             .clone()
             .take(swappable_chunk_count)
-            .cartesian_product(z_iter.clone().take(swappable_chunk_count));
+            .cartesian_product(z_iter.clone().take(swappable_chunk_count))
+            .collect_vec();
 
-        let chunks_swaps = swappable_chunks_iterator.map(|(x, z)| {
+        println!("Will swap {} chunks.", swappable_chunks_iterator.len());
+
+        let chunks_swaps = swappable_chunks_iterator.into_iter().map(|(x, z)| {
             let current_chunk_index = World::chunk_index(x, z);
 
             let next_x = (x as i32 + direction_x) as usize;
@@ -493,28 +507,40 @@ impl World {
             let x_edge_coord = edge_coord(reverse_x);
             let z_edge_coord = edge_coord(reverse_z);
 
-            let x_edge_indices = std::iter::repeat(x_edge_coord)
-                .take(WORLD_SIZE)
-                .cartesian_product(0..WORLD_SIZE);
-            let z_edge_indices =
-                (0..WORLD_SIZE).cartesian_product(std::iter::repeat(z_edge_coord).take(WORLD_SIZE));
+            // TODO: skip loading indices for direction that is 0
+            let x_edge_indices = (0..WORLD_SIZE).map(|z| (x_edge_coord, z));
+            let z_edge_indices = (0..WORLD_SIZE).map(|x| (x, z_edge_coord));
 
-            x_edge_indices.chain(z_edge_indices).unique()
+            if direction_x == 0 {
+                z_edge_indices.collect_vec()
+            } else if direction_z == 0 {
+                x_edge_indices.collect_vec()
+            } else {
+                x_edge_indices.chain(z_edge_indices).unique().collect_vec()
+            }
         };
 
-        let chunk_loads = indices_of_chunks_to_load.map(|(x, z)| {
+        println!("Will load {} chunks.", indices_of_chunks_to_load.len());
+        //println!("Chunks that will be loaded {:?}", indices_of_chunks_to_load);
+        //time_it!("Loading chunks",
+        let chunk_loads = indices_of_chunks_to_load.into_iter().map(|(x, z)| {
             let current_chunk_index = World::chunk_index(x, z);
 
             let original_position = &chunks[current_chunk_index].position;
             let position_to_load = original_position.offset(direction_x, direction_z);
 
+            //time_it!("Loading chunk from disk",
             let mut chunk = minecraft::get_chunk(position_to_load);
+            //);
+            //time_it!("Building discrete chunk surface",
             chunk.build_surface();
+            //);
 
             let chunk_load = ChunkChange(current_chunk_index, ChunkSource::Direct(chunk));
 
             chunk_load
         });
+        //);
 
         chunks_swaps.chain(chunk_loads).collect_vec()
     }
@@ -779,7 +805,7 @@ impl World {
         Mesh::merge(chunk_meshes)
     }
 
-    pub fn dispatch_mesh_builder(&mut self) {
+    pub fn dispatch_mesh_builder(&mut self, options: PolygonizationOptions) {
         let chunks = self.get_chunks();
 
         let chunks_without_mesh = World::inner_chunk_indices()
@@ -798,49 +824,50 @@ impl World {
             return;
         }
 
+        println!(
+            "[INFO] Starting of {} meshes with cell resolution {}.",
+            chunks_without_mesh.len(),
+            options.marching_cubes_cell_size
+        );
+
         let positions_to_build = chunks_without_mesh
             .iter()
             .map(|(index, _)| self.chunks[*index].position);
         self.meshes_being_built.extend(positions_to_build);
 
         let work_handle = thread::spawn(move || {
-            let work_start = Instant::now();
-
             let n = chunks_without_mesh.len();
-            let send_errors = chunks_without_mesh
-                .into_par_iter()
-                .filter_map(|(index, tx)| {
-                    let chunk_mesh = polygonize_chunk(&chunks, index);
-                    let chunk_position = chunks[index].position;
-                    let payload = BoundMesh(chunk_mesh, chunk_position);
 
-                    if let Err(send_error) = tx.send(payload) {
-                        Some(send_error)
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<SendError<BoundMesh>>>();
+            time_it!("Building meshes of smooth surfaces",
+                let send_errors = chunks_without_mesh
+                    //.into_iter() // serial implementation
+                    .into_par_iter() // parallel implementation
+                    .filter_map(|(index, tx)| {
+                        let chunk_mesh = polygonize_chunk(&chunks, index, options);
+                        let chunk_position = chunks[index].position;
+                        let payload = BoundMesh(chunk_mesh, chunk_position);
 
-            let work_time = work_start.elapsed();
-            println!("Building mesh for {n} chunks took {work_time:.2?}.");
+                        if let Err(send_error) = tx.send(payload) {
+                            Some(send_error)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<SendError<BoundMesh>>>();
+            );
+            println!("[INFO] Built {} smooth chunk meshes.", n);
 
             send_errors
         });
 
         self.mesh_builders.push(work_handle);
+    }
 
-        // spawn a thread that runs the polygonization code in parallel
-        // save a handle to the thread
-        // the thread should return the computed meshes after it is done.
-        // the meshes will be saved by some other method ??
-        // this method does not block
-        //
-        // make chunks into Arc<Chunk> so they can be sent across threads
-        // create a new array with cloned arcs of chunks for the background thread
-        // the indices will be computed in the current thread and passed as precomputed data
-        // the thread will return computed meshes along with indices of the meshes
-        // get_smooth_mesh will then check if the thread is finished and if so, populate the lazy
-        // meshes with newly computed values before doing its thing
+    pub fn rebuild_all_meshes(&mut self, options: PolygonizationOptions) {
+        for i in 0..CHUNKS_IN_WORLD {
+            self.chunk_meshes[i] = Lazy::new();
+        }
+
+        self.dispatch_mesh_builder(options);
     }
 }

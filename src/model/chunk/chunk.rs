@@ -218,7 +218,6 @@ impl Chunk {
 
         // Include all inner blocks that have at least 1 invisible neighbor
         for ((_, lower_row), (row_index, center_row), (_, upper_row)) in self.data.chunks(16).enumerate().tuple_windows() {
-            println!("row_index: {row_index}");
             for column_index in 1..15 {
                 let left_tower = &center_row[column_index - 1];
                 let center_tower = &center_row[column_index];

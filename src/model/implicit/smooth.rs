@@ -1,14 +1,10 @@
-use array_init::array_init;
 use cgmath::Vector3;
-use std::sync::Arc;
 
 use crate::{
-    config::WORLD_SIZE,
     infrastructure::texture::MaterialBlend,
     minecraft,
     model::{
-        chunk::Chunk,
-        polygonize::{polygonize, Mesh, Rectangle3D},
+        polygonize::{polygonize, Mesh, Rectangle3D, PolygonizationOptions},
         rectangle::Rectangle,
         Coord, PlanarPosition, Position, Real, discrete::{WorldChunks, World},
     },
@@ -17,14 +13,14 @@ use crate::{
 use super::sdf;
 use super::normal;
 
-pub fn get_density(world: &World, point: Position) -> Real {
+pub fn get_density(world: &World, point: Position, kernel_size: Coord) -> Real {
     let chunks = world.get_chunks();
-    evaluate_density_rigid(&chunks, point)
+    evaluate_density_rigid(&chunks, point, kernel_size)
 }
 
-pub fn get_smooth_normal(world: &World, point: Position) -> Vector3<Real> {
+pub fn get_smooth_normal(world: &World, point: Position, kernel_size: Coord) -> Vector3<Real> {
     let chunks = world.get_chunks();
-    let sdf = |p| evaluate_density_rigid(&chunks, p);
+    let sdf = |p| evaluate_density_rigid(&chunks, p, kernel_size);
 
     normal::gradient(sdf, point)
 }
@@ -49,6 +45,10 @@ impl Kernel {
         Rectangle::square(origin, 2.0 * self.radius)
     }
 
+    pub fn volume_half(&self) -> Real {
+        4.0 * self.radius * self.radius * self.radius
+    }
+
     pub fn y_low(&self) -> Real {
         self.position.y - self.radius
     }
@@ -62,12 +62,12 @@ impl Kernel {
     }
 }
 
-pub fn polygonize_chunk(chunks: &WorldChunks, chunk_index: usize) -> Mesh {
+pub fn polygonize_chunk(chunks: &WorldChunks, chunk_index: usize, options: PolygonizationOptions) -> Mesh {
     let chunk = chunks[chunk_index].clone();
     let support_xz = chunk.position.get_global_position();
 
-    let support_low_y = 40.0; // TODO: use MIN_Y
-    let support_y_size = 40.0; // TODO: use full chunk height
+    let support_low_y = options.y_low_limit;
+    let support_y_size = options.y_size;
 
     let support = Rectangle3D {
         position: Position::new(support_xz.x, support_low_y, support_xz.y),
@@ -76,19 +76,19 @@ pub fn polygonize_chunk(chunks: &WorldChunks, chunk_index: usize) -> Mesh {
         height: support_y_size,
     };
 
-    let density_func = |p| evaluate_density_rigid(&chunks, p);
-    let material_func = |p| sample_materials(&chunks, p);
+    let density_func = |p| evaluate_density_rigid(&chunks, p, options.kernel_size);
+    let material_func = |p| sample_materials(&chunks, p, options.kernel_size - 0.3);
 
-    polygonize(support, density_func, material_func)
+    polygonize(support, density_func, material_func, options)
 }
 
 const RIGID_BLOCK_SMOOTHNESS: Real = 1.0;
-fn evaluate_density_rigid(model: &WorldChunks, point: Position) -> Real {
-    let model_distance = -evaluate_density(model, point);
+fn evaluate_density_rigid(model: &WorldChunks, point: Position, kernel_size: Coord) -> Real {
+    let model_distance = -evaluate_density(model, point, kernel_size);
     let rigid_distance = distance_to_rigid_blocks(model, point);
 
     match rigid_distance {
-        //Some(distance) => model_density.min(distance),
+        //Some(distance) => model_distance.min(distance),
         Some(distance) => smooth_minimum(model_distance, distance, RIGID_BLOCK_SMOOTHNESS),
         None => model_distance,
     }
@@ -147,11 +147,12 @@ const DENSITY_SIGMA: Coord = 0.9;
 const KERNEL_VOLUME: Real = 8.0 * DENSITY_SIGMA * DENSITY_SIGMA * DENSITY_SIGMA;
 const KERNEL_VOLUME_HALF: Real = KERNEL_VOLUME / 2.0;
 
+
 // 2 * (material_volume / kernel_volume) - 1
 // returns values in range [-1., 1.]
-fn evaluate_density(model: &WorldChunks, point: Position) -> Real {
-    let kernel = Kernel::new(point, DENSITY_SIGMA);
-    return sample_volume(model, kernel) / KERNEL_VOLUME_HALF - 1.0;
+fn evaluate_density(model: &WorldChunks, point: Position, kernel_size: Coord) -> Real {
+    let kernel = Kernel::new(point, kernel_size);
+    return sample_volume(model, kernel) / kernel.volume_half() - 1.0;
 }
 
 fn sample_volume(chunks: &WorldChunks, kernel: Kernel) -> Real {
@@ -179,8 +180,8 @@ fn sample_volume(chunks: &WorldChunks, kernel: Kernel) -> Real {
 // any intersecting blocks
 const MATERIAL_SIGMA: Coord = 0.6;
 
-fn sample_materials(chunks: &WorldChunks, point: Position) -> MaterialBlend {
-    let kernel = Kernel::new(point, MATERIAL_SIGMA);
+fn sample_materials(chunks: &WorldChunks, point: Position, kernel_size: Coord) -> MaterialBlend {
+    let kernel = Kernel::new(point, kernel_size);
     let kernel_box = kernel.get_bounding_rectangle();
     let y_low = kernel.y_low();
     let y_high = kernel.y_high();

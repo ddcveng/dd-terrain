@@ -3,10 +3,10 @@ use fastnbt::from_bytes;
 use std::path::Path;
 use std::time::Instant;
 
-use crate::config;
 use crate::model::chunk::ChunkPosition;
 use crate::model::common::BlockType;
 use crate::model::Position;
+use crate::{config, time_it};
 
 pub const MIN_BLOCK_Y: isize = 32; // TODO: Real value is -64
 const MAX_BLOCK_Y: isize = 320;
@@ -38,7 +38,6 @@ pub fn get_chunk(/*region_loader: &RegionFileLoader,*/ chunk_position: ChunkPosi
     let region_file_path = build_region_filepath(chunk_position.region_x, chunk_position.region_z);
     let file = std::fs::File::open(region_file_path).unwrap();
     let mut region = Region::from_stream(file).unwrap();
-    let now = Instant::now();
 
     let data = match region.read_chunk(chunk_position.chunk_x, chunk_position.chunk_z) {
         Ok(opt_data) => match opt_data {
@@ -57,16 +56,7 @@ pub fn get_chunk(/*region_loader: &RegionFileLoader,*/ chunk_position: ChunkPosi
         }
     };
 
-    let elapsed = now.elapsed();
-    //println!("reading chunk took {elapsed:.2?}");
-
-    let now = Instant::now();
     let chunk: CurrentJavaChunk = from_bytes(data.as_slice()).unwrap();
-
-    let elapsed = now.elapsed();
-    //println!("parsing chunk took {elapsed:.2?}");
-
-    let now = Instant::now();
 
     //    for y in chunk.y_range() {
     //        for x in 0..BLOCKS_IN_CHUNK {
@@ -130,9 +120,6 @@ pub fn get_chunk(/*region_loader: &RegionFileLoader,*/ chunk_position: ChunkPosi
             }
         }
     }
-
-    let elapsed = now.elapsed();
-    //println!("block loop took {elapsed:.2?}");
 
     dd_chunk
 }

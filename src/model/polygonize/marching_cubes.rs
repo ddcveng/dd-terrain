@@ -9,6 +9,8 @@ use crate::{
 
 use crate::model::implicit::normal;
 
+use super::PolygonizationOptions;
+
 // The jump in quality between 1.0 and 0.9 is insane!
 //
 // This value should divide block size without remainder or weird artefacts occure when building
@@ -17,7 +19,7 @@ use crate::model::implicit::normal;
 // TODO: maybe control the cell size through a different variable
 // for example something like mesh subdivision factor : usize and
 // if it has value x it means divide block in x*x*x cells
-const CELL_SIZE: Real = 0.50;
+const CELL_SIZE: Real = 0.5;
 
 // Needs to be slightly larger than 0, even though we want to display the isosurface at 0.
 // Otherwise we get weird aliasing when rendering implicit blocks
@@ -90,20 +92,19 @@ type VertexIndex = u32;
 // The mapping is decoupled from the Intersection to allow parallelization
 type IntersectionVertexMap = Vec<Option<VertexIndex>>;
 
-// TODO: rename density func, its an sdf now ...
-// Driver function, returns vertex+index buffer and dispatches work
 pub fn polygonize(
     support: Rectangle3D,
-    density_func: impl Fn(Position) -> Real,
+    sdf: impl Fn(Position) -> Real,
     material_func: impl Fn(Position) -> MaterialBlend,
+    options: PolygonizationOptions,
 ) -> Mesh {
-    let grid = Grid::new(support, &density_func);
+    let grid = Grid::new(support, &sdf, options.marching_cubes_cell_size);
     let intersections = find_intersections(&grid);
 
     let vertex_mapping = build_vertex_mapping(&intersections);
     let indices = assemble_triangles(&grid, &vertex_mapping);
 
-    let vertices = build_mesh_vertices(&intersections, &indices, &density_func, &material_func);
+    let vertices = build_mesh_vertices(&intersections, &indices, &sdf, &material_func);
 
     Mesh { vertices, indices }
 }
@@ -423,10 +424,14 @@ struct Grid {
 }
 
 impl Grid {
-    pub fn new(support: Rectangle3D, density_function: impl Fn(Position) -> Real) -> Self {
-        let depth_cells = (support.depth / CELL_SIZE) as usize + 1;
-        let height_cells = (support.height / CELL_SIZE) as usize + 1;
-        let width_cells = (support.width / CELL_SIZE) as usize + 1;
+    pub fn new(
+        support: Rectangle3D,
+        density_function: impl Fn(Position) -> Real,
+        cell_size: Real,
+    ) -> Self {
+        let depth_cells = (support.depth / cell_size) as usize + 1;
+        let height_cells = (support.height / cell_size) as usize + 1;
+        let width_cells = (support.width / cell_size) as usize + 1;
 
         // Create the grid 1 cell bigger in all dimensions
         // this way we have information about all points within the grid
@@ -440,9 +445,9 @@ impl Grid {
             .into_iter()
             .map(|(x, y, z)| {
                 let point_position = Position::new(
-                    support.position.x + (x as Real) * CELL_SIZE,
-                    support.position.y + (y as Real) * CELL_SIZE,
-                    support.position.z + (z as Real) * CELL_SIZE,
+                    support.position.x + (x as Real) * cell_size,
+                    support.position.y + (y as Real) * cell_size,
+                    support.position.z + (z as Real) * cell_size,
                 );
                 let point_density = density_function(point_position);
 
