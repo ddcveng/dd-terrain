@@ -1,7 +1,6 @@
-use fastanvil::{Chunk, CurrentJavaChunk, Region, RegionFileLoader, RegionLoader};
+use fastanvil::{CurrentJavaChunk, Region};
 use fastnbt::from_bytes;
 use std::path::Path;
-use std::time::Instant;
 
 use crate::model::chunk::ChunkPosition;
 use crate::model::common::BlockType;
@@ -11,11 +10,47 @@ use crate::{config, time_it};
 pub const MIN_BLOCK_Y: isize = 32; // TODO: Real value is -64
 const MAX_BLOCK_Y: isize = 320;
 const SECTION_HEIGHT: usize = 16;
-const BLOCK_BLACKLIST: [&str; 4] = [
-    "minecraft:dead_bush",
-    "minecraft:grass",
-    "minecraft:fern",
-    "minecraft:tall_grass",
+
+// The name of the block has to match the string exactly
+static BLOCK_MAP_EXACT: [(&str, BlockType); 10] = [
+    ("grass_block", BlockType::Grass),
+    ("air", BlockType::Air),
+    ("granite", BlockType::Dirt),
+    ("diorite", BlockType::DarkStone),
+    ("stone", BlockType::Stone),
+    ("gravel", BlockType::Stone),
+    ("andesite", BlockType::DarkStone),
+    ("deepslate", BlockType::Stone),
+    ("red_sand", BlockType::RedSand),
+    ("cobblestone", BlockType::Cobblestone),
+];
+
+// The name of the block has to contain the key to match
+// Note that order matters as some blocks may match multiple keys.
+static BLOCK_MAP_NONSPECIFIC: [(&str, BlockType); 10] = [
+    ("dirt", BlockType::Dirt),
+    ("stone", BlockType::Cobblestone),
+    ("sand", BlockType::Sand),
+    ("ore", BlockType::Ore),
+    ("log", BlockType::Wood),
+    ("leaves", BlockType::Leaves),
+    ("water", BlockType::Water),
+    ("lava", BlockType::Lava),
+    ("plank", BlockType::Planks),
+    ("glass", BlockType::Glass),
+];
+
+const BLOCK_BLACKLIST: [&str; 10] = [
+    "dead_bush",
+    "grass",
+    "fern",
+    "tall_grass",
+    "vine",
+    "cocoa",
+    "poppy",
+    "dandelion",
+    "torch",
+    "wall_torch",
 ];
 
 // Alias type definition to avoid ambiguity with fastanvil::Chunk
@@ -99,12 +134,16 @@ pub fn get_chunk(/*region_loader: &RegionFileLoader,*/ chunk_position: ChunkPosi
             let palette = block_states.palette();
             for (i, palette_index) in blocks_iterator.enumerate() {
                 let block = &palette[palette_index];
-                let block_type = get_block_type(block.name());
+                let Some(block_id) = block.name().strip_prefix("minecraft:") else {
+                    continue;
+                };
+
+                let block_type = get_block_type_ng(block_id);
 
                 match block_type {
                     BlockType::Unknown => {
                         // TODO: this is bad
-                        if BLOCK_BLACKLIST.contains(&block.name()) {
+                        if BLOCK_BLACKLIST.contains(&block_id) {
                             continue;
                         }
                     }
@@ -131,6 +170,22 @@ fn build_region_filepath(region_x: i32, region_z: i32) -> String {
         .join(region_file_name);
 
     region_file_path.to_str().unwrap().to_owned()
+}
+
+fn get_block_type_ng(block_id: &str) -> BlockType {
+    let exact_match = BLOCK_MAP_EXACT.iter().find(|(key, _)| block_id == *key);
+    if let Some((_, block_type)) = exact_match {
+        return *block_type;
+    }
+
+    let partial_match = BLOCK_MAP_NONSPECIFIC
+        .iter()
+        .find(|(key, _)| block_id.contains(key));
+    if let Some((_, block_type)) = partial_match {
+        return *block_type;
+    }
+
+    BlockType::Unknown
 }
 
 fn get_block_type(block_id: &str) -> BlockType {

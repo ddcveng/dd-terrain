@@ -38,6 +38,20 @@ vec2 get_pallette_offset(uint material_index) {
             return vec2(2, 3);
         case 7: // Ore
             return vec2(3, 3);
+        case 8: // Water 
+            return vec2(3, 2);
+        case 9: // Lava 
+            return vec2(0, 1);
+        case 10: // Planks 
+            return vec2(1, 1);
+        case 11: // DarkStone 
+            return vec2(2, 1);
+        case 12: // RedSand 
+            return vec2(3, 1);
+        case 13: // Cobblestone
+            return vec2(0, 0);
+        case 14: // Glass
+            return vec2(1, 0);
         default: // The last pallette element contains some invalid texture
             return vec2(MAX_PALLETTE_OFFSET, 0);
     }

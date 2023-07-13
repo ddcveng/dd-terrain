@@ -1,11 +1,11 @@
 use super::Real;
 
-// TODO: is 1 byte for block type enough?
 // Note: Unknown must always be the last variant,
 // or at least the variant with the largest value.
+//
 // The integer values are used in shaders to determine the texture,
 // changing them requires updating the shaders
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum BlockType {
     Air = 0,
     Dirt = 1,
@@ -15,7 +15,14 @@ pub enum BlockType {
     Leaves = 5,
     Sand = 6,
     Ore = 7,
-    Unknown = 8,
+    Water = 8,
+    Lava = 9,
+    Planks = 10,
+    DarkStone = 11,
+    RedSand = 12,
+    Cobblestone = 13,
+    Glass = 14,
+    Unknown = 15,
 }
 
 impl TryFrom<usize> for BlockType {
@@ -30,6 +37,13 @@ impl TryFrom<usize> for BlockType {
             x if x == BlockType::Leaves as usize => Ok(BlockType::Leaves),
             x if x == BlockType::Sand as usize => Ok(BlockType::Sand),
             x if x == BlockType::Ore as usize => Ok(BlockType::Ore),
+            x if x == BlockType::Water as usize => Ok(BlockType::Water),
+            x if x == BlockType::Lava as usize => Ok(BlockType::Lava),
+            x if x == BlockType::Planks as usize => Ok(BlockType::Planks),
+            x if x == BlockType::DarkStone as usize => Ok(BlockType::DarkStone),
+            x if x == BlockType::RedSand as usize => Ok(BlockType::RedSand),
+            x if x == BlockType::Cobblestone as usize => Ok(BlockType::Cobblestone),
+            x if x == BlockType::Glass as usize => Ok(BlockType::Glass),
             _ => Err(()),
         }
     }
@@ -48,6 +62,13 @@ pub fn get_pallette_texture_coords(block_type: BlockType) -> [f32; 2] {
         BlockType::Ore => (3, 3),
         BlockType::Wood => (1, 2),
         BlockType::Leaves => (2, 2),
+        BlockType::Water => (3, 2),
+        BlockType::Lava => (0, 1),
+        BlockType::Planks => (1, 1),
+        BlockType::DarkStone => (2, 1),
+        BlockType::RedSand => (3, 1),
+        BlockType::Cobblestone => (0, 0),
+        BlockType::Glass => (1, 0),
         _ => (3, 0),
     };
 
@@ -69,7 +90,13 @@ pub fn is_visible_block(material: BlockType) -> bool {
     !matches!(material, BlockType::Air)
 }
 
-const RIGID_MATERIALS: [BlockType; 1] = [BlockType::Wood];
+const RIGID_MATERIALS: [BlockType; 5] = [
+    BlockType::Wood,
+    BlockType::Cobblestone,
+    BlockType::Planks,
+    BlockType::Glass,
+    BlockType::Unknown,
+];
 pub fn is_rigid_block(material: BlockType) -> bool {
     RIGID_MATERIALS.contains(&material)
 }
