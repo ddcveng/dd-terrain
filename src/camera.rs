@@ -8,6 +8,10 @@ use cgmath::{
     perspective, Angle, InnerSpace, Matrix4, Point3, Rad, SquareMatrix, Vector2, Vector3,
 };
 
+// Camera pitch has to be clamped to this range to avoid singularities
+const MAX_PITCH: Rad<Real> = Rad(std::f64::consts::FRAC_PI_2);
+const MIN_PITCH: Rad<Real> = Rad(-std::f64::consts::FRAC_PI_2);
+
 pub struct Camera {
     pub world_to_view: Matrix4<Real>,
     pub view_to_world: Matrix4<Real>,
@@ -53,13 +57,17 @@ impl Camera {
         let mut yaw: Rad<Real> = Angle::atan2(direction.z, direction.x);
         let mut pitch: Rad<Real> = Angle::asin(direction.y);
 
-        if let Some(rotation) = self.rotation {
+        if let Some(rotation) = self.rotation.take() {
             yaw += Rad(rotation.x * config::SENSITIVITY);
+
             pitch += Rad(rotation.y * config::SENSITIVITY);
-
-            // TODO: avoid singularities
-
-            self.rotation = None;
+            pitch = if pitch > MAX_PITCH {
+                MAX_PITCH
+            } else if pitch < MIN_PITCH {
+                MIN_PITCH
+            } else {
+                pitch
+            };
         }
 
         let new_direction = Vector3::new(
