@@ -281,6 +281,7 @@ impl World {
 
         match builder.join() {
             Ok(chunk_changes) => {
+                // The changes have to be applied in a specific order
                 for change in chunk_changes {
                     self.apply_chunk_change(change);
                 }
@@ -466,20 +467,27 @@ impl World {
                 false => index,
             })
         };
-        let x_iter = index_builder(reverse_x).into_iter();
-        let z_iter = index_builder(reverse_z).into_iter();
 
-        let swappable_chunk_count = WORLD_SIZE - 1;
+        let swappable_region_size = |dir: i32| -> usize {
+            let loading_in_direction = dir != 0;
 
-        let swappable_chunks_iterator = x_iter
-            .clone()
-            .take(swappable_chunk_count)
-            .cartesian_product(z_iter.clone().take(swappable_chunk_count))
-            .collect_vec();
+            if loading_in_direction {
+                WORLD_SIZE - 1
+            } else {
+                WORLD_SIZE
+            }
+        };
 
-        println!("Will swap {} chunks.", swappable_chunks_iterator.len());
+        let x_iter = index_builder(reverse_x)
+            .into_iter()
+            .take(swappable_region_size(direction_x));
+        let z_iter = index_builder(reverse_z)
+            .into_iter()
+            .take(swappable_region_size(direction_z));
 
-        let chunks_swaps = swappable_chunks_iterator.into_iter().map(|(x, z)| {
+        let swappable_chunks_iterator = x_iter.cartesian_product(z_iter);
+
+        let chunks_swaps = swappable_chunks_iterator.map(|(x, z)| {
             let current_chunk_index = World::chunk_index(x, z);
 
             let next_x = (x as i32 + direction_x) as usize;
@@ -494,9 +502,6 @@ impl World {
             swap_chunks
         });
 
-        //        let indices_of_chunks_to_load = x_iter
-        //            .skip(swappable_chunk_count)
-        //            .cartesian_product(z_iter.skip(swappable_chunk_count));
         // Iter all indices that couldn't be swapped.
         // These are the indices on the edges that correspond to the offset direction
         let indices_of_chunks_to_load = {
@@ -507,7 +512,6 @@ impl World {
             let x_edge_coord = edge_coord(reverse_x);
             let z_edge_coord = edge_coord(reverse_z);
 
-            // TODO: skip loading indices for direction that is 0
             let x_edge_indices = (0..WORLD_SIZE).map(|z| (x_edge_coord, z));
             let z_edge_indices = (0..WORLD_SIZE).map(|x| (x, z_edge_coord));
 
@@ -520,27 +524,19 @@ impl World {
             }
         };
 
-        println!("Will load {} chunks.", indices_of_chunks_to_load.len());
-        //println!("Chunks that will be loaded {:?}", indices_of_chunks_to_load);
-        //time_it!("Loading chunks",
         let chunk_loads = indices_of_chunks_to_load.into_iter().map(|(x, z)| {
             let current_chunk_index = World::chunk_index(x, z);
 
             let original_position = &chunks[current_chunk_index].position;
             let position_to_load = original_position.offset(direction_x, direction_z);
 
-            //time_it!("Loading chunk from disk",
             let mut chunk = minecraft::get_chunk(position_to_load);
-            //);
-            //time_it!("Building discrete chunk surface",
             chunk.build_surface();
-            //);
 
             let chunk_load = ChunkChange(current_chunk_index, ChunkSource::Direct(chunk));
 
             chunk_load
         });
-        //);
 
         chunks_swaps.chain(chunk_loads).collect_vec()
     }
