@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::Real;
 
 // Note: Unknown must always be the last variant,
@@ -90,13 +92,97 @@ pub fn is_visible_block(material: BlockType) -> bool {
     !matches!(material, BlockType::Air)
 }
 
-const RIGID_MATERIALS: [BlockType; 5] = [
+enum MaterialOperation {
+    Include,
+    Exclude,
+}
+
+// TODO: performance
+pub struct MaterialSetup {
+    smoothable_materials: HashSet<BlockType>,
+    rigid_materials: HashSet<BlockType>,
+    op: MaterialOperation,
+}
+
+impl MaterialSetup {
+    pub fn include<const S: usize, const R: usize>(
+        included: [BlockType; S],
+        rigid: [BlockType; R],
+    ) -> Self {
+        MaterialSetup {
+            smoothable_materials: HashSet::from(included),
+            rigid_materials: HashSet::from(rigid),
+            op: MaterialOperation::Include,
+        }
+    }
+
+    pub fn exclude<const S: usize, const R: usize>(
+        excluded: [BlockType; S],
+        rigid: [BlockType; R],
+    ) -> Self {
+        MaterialSetup {
+            smoothable_materials: HashSet::from(excluded),
+            rigid_materials: HashSet::from(rigid),
+            op: MaterialOperation::Exclude,
+        }
+    }
+
+    pub fn all_smooth<const R: usize>(rigid: [BlockType; R]) -> Self {
+        MaterialSetup {
+            smoothable_materials: HashSet::new(),
+            rigid_materials: HashSet::from(rigid),
+            op: MaterialOperation::Exclude,
+        }
+    }
+
+    pub fn is_material_smoothable(&self, material: BlockType) -> bool {
+        let possibly_smoothable =
+            !matches!(material, BlockType::Air) && !self.rigid_materials.contains(&material);
+
+        if !possibly_smoothable {
+            return false;
+        }
+
+        let is_included = match self.op {
+            MaterialOperation::Include => self.smoothable_materials.contains(&material),
+            MaterialOperation::Exclude => !self.smoothable_materials.contains(&material),
+        };
+
+        return is_included;
+    }
+
+    pub fn contributes_color(&self, material: BlockType) -> bool {
+        let is_included = match self.op {
+            MaterialOperation::Include => self.smoothable_materials.contains(&material),
+            MaterialOperation::Exclude => !self.smoothable_materials.contains(&material),
+        };
+
+        is_included || self.is_rigid(material)
+    }
+
+    pub fn is_rigid(&self, material: BlockType) -> bool {
+        return self.rigid_materials.contains(&material);
+    }
+
+    pub fn no_rigid(&self) -> bool {
+        self.rigid_materials.is_empty()
+    }
+}
+
+pub const RIGID_MATERIALS: [BlockType; 5] = [
     BlockType::Wood,
     BlockType::Cobblestone,
     BlockType::Planks,
     BlockType::Glass,
     BlockType::Unknown,
 ];
+
+//const RIGID_MATERIALS: u16 = 0b1110010000010000;
 pub fn is_rigid_block(material: BlockType) -> bool {
-    RIGID_MATERIALS.contains(&material)
+    //let material_index = material as u16;
+
+    //let bit_value = 1 << material_index;
+    //(RIGID_MATERIALS & bit_value) != 0
+    matches!(material, BlockType::Wood)
+    //RIGID_MATERIALS.contains(&material)
 }

@@ -4,7 +4,7 @@ use super::material_tower::MaterialStack;
 use super::ChunkPosition;
 use crate::infrastructure::texture::MaterialBlend;
 use crate::minecraft;
-use crate::model::common::{get_pallette_texture_coords, is_rigid_block, BlockType, is_visible_block};
+use crate::model::common::{get_pallette_texture_coords, is_rigid_block, BlockType, is_visible_block, MaterialSetup};
 use crate::model::rectangle::Rectangle;
 use crate::model::{Coord, Position, Real};
 
@@ -82,13 +82,14 @@ fn get_block_portion_in_range(block_start: usize, range_start: Coord, range_end:
         return 0.0;
     }
 
-    let mut portion: Real = 1.0; // whole block is in range
+    let mut portion: Real = 1.0; // assume whole block is in range
 
     // cut portion from start of block
     if block_start < range_start {
         portion -= range_start - block_start;
     }
 
+    // cut portion from end of block
     if block_end > range_end {
         portion -= block_end - range_end;
     }
@@ -127,6 +128,8 @@ impl Chunk {
             // offset the position to the center of the block
             // TODO: make a constant for block size
             // TODO: does this make sense? why not have the blocks centered by default?
+            // TODO: this offset is reversed in the shader, this is weird and probably shouldn't be
+            // done at all.
             let offset_position = position.map(|x| x + 0.5);
 
             let rigid_record = RigidBlockRecord {
@@ -252,7 +255,7 @@ impl Chunk {
             }
         }
 
-        // Include all edge blocks
+        // Include all edge blocks since we dont know whether the neighboring chunk obscures them
         for i in 0..self.data.len() {
             let column = i % 16;
             let row = i / 16;
@@ -274,10 +277,11 @@ impl Chunk {
     }
 
     // Returns None if there are no rigid blocks
-    pub fn get_closest_rigid_block(&self, position: Position) -> Option<(RigidBlockRecord, Real)> {
+    pub fn get_closest_rigid_block(&self, position: Position, material_setup: &MaterialSetup) -> Option<(RigidBlockRecord, Real)> {
         let Some((closest_rigid_block, distance2)) = self
             .rigid_blocks
             .iter()
+            .filter(|rigid_record| material_setup.is_rigid(rigid_record.material))
             .map(|rigid_record| (rigid_record, position.distance2(rigid_record.position)))
             .fold(None, |min_dist, dist| match min_dist {
                 None => Some(dist),
@@ -326,6 +330,7 @@ impl Chunk {
         intersection_xz: Rectangle,
         y_low: Coord,
         y_high: Coord,
+        material_setup: &MaterialSetup,
     ) -> Real {
         let intersection_start_index_x = get_block_coord(intersection_xz.left());
         let intersection_start_index_z = get_block_coord(intersection_xz.bottom());
@@ -347,7 +352,9 @@ impl Chunk {
                 get_block_portion_in_range(x, intersection_xz.left(), intersection_xz.right());
             let z_scale =
                 get_block_portion_in_range(z, intersection_xz.bottom(), intersection_xz.top());
-            let y_scale = self.get_tower(x, z).get_intersection_size(y_low, y_high);
+
+            // Pass here y_low, y_high, smoothable blocks set, rigid blocks set
+            let y_scale = self.get_tower(x, z).get_intersection_size(y_low, y_high, material_setup);
 
             let intersection_volume = x_scale * y_scale * z_scale;
             acc + intersection_volume
@@ -361,6 +368,7 @@ impl Chunk {
         intersection_xz: Rectangle,
         y_low: Coord,
         y_high: Coord,
+        material_setup: &MaterialSetup,
     ) -> MaterialBlend {
         let intersection_start_index_x = get_block_coord(intersection_xz.left());
         let intersection_start_index_z = get_block_coord(intersection_xz.bottom());
@@ -385,7 +393,10 @@ impl Chunk {
                 get_block_portion_in_range(z, intersection_xz.bottom(), intersection_xz.top());
 
             let tower = self.get_tower(x, z);
-            for (y_scale, material) in tower.iter_intersecting_blocks(y_low, y_high) {
+            for (y_scale, material) in tower
+                .iter_intersecting_blocks(y_low, y_high)
+                .filter(|(_, material)| material_setup.contributes_color(*material)) 
+            {
                 let block_intersection_size = x_scale * y_scale * z_scale;
                 blend.mix(material, block_intersection_size);
             }

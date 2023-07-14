@@ -1,5 +1,7 @@
+use std::collections::HashSet;
+
 use crate::model::{
-    common::{is_rigid_block, is_visible_block, BlockType},
+    common::{is_rigid_block, is_visible_block, BlockType, MaterialSetup},
     Coord, Real,
 };
 
@@ -37,7 +39,12 @@ impl MaterialStack {
         self.blocks[stack_index] = material;
     }
 
-    pub fn get_intersection_size(&self, y_low: Coord, y_high: Coord) -> Real {
+    pub fn get_intersection_size(
+        &self,
+        y_low: Coord,
+        y_high: Coord,
+        material_setup: &MaterialSetup,
+    ) -> Real {
         let low_floor = y_low.floor();
         let high_ceil = y_high.ceil();
         let low_index = height_to_index(low_floor as isize);
@@ -45,7 +52,7 @@ impl MaterialStack {
 
         let blocks_in_range = (low_index..high_index)
             .map(|i| self.blocks[i])
-            .filter(|material| is_smoothable_block(*material))
+            .filter(|material| material_setup.is_material_smoothable(*material))
             .count();
 
         if blocks_in_range == 0 {
@@ -53,14 +60,16 @@ impl MaterialStack {
         }
 
         let excess_low = {
-            let cutoff = is_smoothable_block(self.blocks[low_index]);
+            let cutoff = material_setup.is_material_smoothable(self.blocks[low_index]);
+            //let cutoff = !rigid_set.contains(&self.blocks[low_index]); //is_smoothable_block(self.blocks[low_index]);
             match cutoff {
                 true => (y_low - low_floor) as Real,
                 false => 0.0,
             }
         };
         let excess_high = {
-            let cutoff = is_smoothable_block(self.blocks[high_index - 1]);
+            let cutoff = material_setup.is_material_smoothable(self.blocks[high_index - 1]);
+            //let cutoff = !rigid_set.contains(&self.blocks[high_index - 1]);
             match cutoff {
                 true => (high_ceil - y_high) as Real,
                 false => 0.0,

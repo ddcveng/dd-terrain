@@ -190,6 +190,9 @@ void main() {
     vec4 texture_color = assemble_color(fragment_position, v_normal);
     vec3 diffuse_color = texture_color.rgb;
 
+    // Debug no textures
+    // diffuse_color = vec3(0.5, 0.5, 0.5);
+
     vec3 color = lighting * diffuse_color;
 
     // Debug normals

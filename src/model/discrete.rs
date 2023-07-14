@@ -798,7 +798,7 @@ impl World {
                 chunk_mesh.get()
             });
 
-        Mesh::merge(chunk_meshes)
+        Mesh::copy_merge(chunk_meshes)
     }
 
     pub fn dispatch_mesh_builder(&mut self, options: PolygonizationOptions) {

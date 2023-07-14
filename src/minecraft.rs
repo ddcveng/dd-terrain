@@ -12,7 +12,7 @@ const MAX_BLOCK_Y: isize = 320;
 const SECTION_HEIGHT: usize = 16;
 
 // The name of the block has to match the string exactly
-static BLOCK_MAP_EXACT: [(&str, BlockType); 10] = [
+const BLOCK_MAP_EXACT: [(&str, BlockType); 10] = [
     ("grass_block", BlockType::Grass),
     ("air", BlockType::Air),
     ("granite", BlockType::Dirt),
@@ -27,7 +27,7 @@ static BLOCK_MAP_EXACT: [(&str, BlockType); 10] = [
 
 // The name of the block has to contain the key to match
 // Note that order matters as some blocks may match multiple keys.
-static BLOCK_MAP_NONSPECIFIC: [(&str, BlockType); 10] = [
+const BLOCK_MAP_NONSPECIFIC: [(&str, BlockType); 10] = [
     ("dirt", BlockType::Dirt),
     ("stone", BlockType::Cobblestone),
     ("sand", BlockType::Sand),

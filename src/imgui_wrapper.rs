@@ -17,7 +17,7 @@ impl Default for SmoothMeshOptions {
     fn default() -> Self {
         SmoothMeshOptions {
             smoothness_level: 2,
-            mesh_resolution_level: 1,
+            mesh_resolution_level: 2,
             y_low_limit: 40,
             y_size: 40,
             apply: false,

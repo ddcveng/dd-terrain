@@ -1,4 +1,4 @@
-use cgmath::{Point3, Vector3, Zero};
+use cgmath::{InnerSpace, Point3, Vector3, Zero};
 use glium::implement_vertex;
 use itertools::Itertools;
 
@@ -52,9 +52,24 @@ impl Mesh {
         other.vertices.extend_from_slice(self.vertices.as_slice());
     }
 
-    pub fn merge<'a>(meshes: impl Iterator<Item = &'a Mesh>) -> Self {
+    pub fn copy_merge<'a>(meshes: impl Iterator<Item = &'a Mesh>) -> Self {
         let mut merged_mesh = Mesh::empty();
         meshes.for_each(|mesh| mesh.copy_into(&mut merged_mesh));
+
+        merged_mesh
+    }
+
+    pub fn merge(meshes: &mut [Mesh]) -> Self {
+        let mut merged_mesh = Mesh::empty();
+
+        for mesh in meshes {
+            let index_offset = merged_mesh.vertices.len() as VertexIndex;
+
+            let indices_transformed = mesh.indices.iter().map(|index| index_offset + *index);
+            merged_mesh.indices.extend(indices_transformed);
+
+            merged_mesh.vertices.append(&mut mesh.vertices);
+        }
 
         merged_mesh
     }
