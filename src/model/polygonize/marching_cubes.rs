@@ -117,12 +117,12 @@ pub fn polygonize(
 // For this reason a mapping of Intersection -> MeshVertex is required, see build_vertex_mapping
 fn build_mesh_vertices(
     intersections: &IntersectionContainer,
-    _indices: &Vec<VertexIndex>,
+    indices: &Vec<VertexIndex>,
     density_func: &impl Fn(Position) -> Real,
     material_func: &impl Fn(Position) -> MaterialBlend,
 ) -> Vec<MeshVertex> {
-    let build_vertex = |vertex_position /*, vertex_normal: Vector3<Real>*/| {
-        let normal = normal::gradient(density_func, vertex_position);
+    let build_vertex = |vertex_position, vertex_normal: Vector3<Real>| {
+        //let normal = normal::gradient(density_func, vertex_position);
         //let normal = vertex_normal.normalize();
         let blend = material_func(vertex_position);
         let weights = blend.into_material_weights();
@@ -133,26 +133,80 @@ fn build_mesh_vertices(
                 vertex_position.y as f32,
                 vertex_position.z as f32,
             ],
-            normal: [normal.x as f32, normal.y as f32, normal.z as f32],
+            normal: [
+                vertex_normal.x as f32,
+                vertex_normal.y as f32,
+                vertex_normal.z as f32,
+            ],
             vertex_material_weights: weights,
         }
     };
 
-    let vertex_positions: Vec<Position> = intersections
-        .iter()
-        .filter_map(|x| x.map(|pos| pos))
-        .collect();
-
+    let vertex_positions: Vec<Position> = intersections.iter().filter_map(|x| *x).collect();
+    let vertex_normals = build_normals(&vertex_positions, indices, density_func);
     //let vertex_normals = build_triangle_normals(&vertex_positions, &indices);
 
     let vertices = vertex_positions
         .iter()
-        //.zip(vertex_normals.iter())
+        .zip(vertex_normals.iter())
         //.map(|(pos, normal)| build_vertex(*pos, *normal))
-        .map(|pos| build_vertex(*pos))
+        .map(|(pos, normal)| build_vertex(*pos, *normal))
         .collect();
 
     vertices
+}
+
+// Use the distfunc gradient as the normal.
+// If it is ill defined, fall back to triangle normals
+fn build_normals(
+    vertex_positions: &Vec<Position>,
+    indices: &Vec<VertexIndex>,
+    distfunc: &impl Fn(Position) -> Real,
+) -> Vec<Vector3<Real>> {
+    vertex_positions
+        .iter()
+        .enumerate()
+        .map(|(index, pos)| {
+            let gradient = normal::gradient(distfunc, *pos);
+            let bad_gradient = gradient.x.is_nan() || gradient.y.is_nan() || gradient.z.is_nan();
+            if !bad_gradient {
+                return gradient;
+            }
+
+            get_triangle_normal(vertex_positions, indices, index)
+        })
+        .collect_vec()
+}
+
+// Get the average of the face normals of all triangles that share vertex at *vertex_index*
+fn get_triangle_normal(
+    vertex_positions: &Vec<Position>,
+    indices: &Vec<VertexIndex>,
+    vertex_index: usize,
+) -> Vector3<Real> {
+    let triangle_normal = indices
+        .chunks(3)
+        .filter(|tri_indices| {
+            tri_indices[0] as usize == vertex_index
+                || tri_indices[1] as usize == vertex_index
+                || tri_indices[2] as usize == vertex_index
+        })
+        .fold(Vector3::zero(), |acc, tri_indices| {
+            // Triangle vertices
+            let a = vertex_positions[tri_indices[0] as usize];
+            let b = vertex_positions[tri_indices[1] as usize];
+            let c = vertex_positions[tri_indices[2] as usize];
+
+            // Sides of the triangle
+            let u = b - a;
+            let v = c - a;
+
+            let face_normal = u.cross(v);
+
+            acc + face_normal
+        });
+
+    triangle_normal.normalize()
 }
 
 // For each vertex returns the average of normals of its incident triangles
