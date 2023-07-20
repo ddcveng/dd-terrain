@@ -48,7 +48,7 @@ const IMPLICIT_FS: &str = include_str!("shaders/implicit_fs.glsl");
 fn main() {
     let (event_loop, display) = create_window();
 
-    let block_pallette = texture_from_file("block-palette-tiling.png", &display);
+    let block_pallette = texture_from_file("block-palette.png", &display);
 
     let mut controls = SmoothMeshOptions::default();
     let mut polygonization_options = controls.into();
