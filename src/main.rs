@@ -9,7 +9,7 @@ use glium::glutin::window::CursorGrabMode;
 use glium::glutin::window::Window;
 
 use array_init::array_init;
-use cgmath::{EuclideanSpace, Matrix4, Point3, Vector3};
+use cgmath::{Matrix4, Vector3};
 
 mod imgui_wrapper;
 use imgui_wrapper::{ImguiWrapper, SmoothMeshOptions, UIWindowBuilder};
@@ -48,7 +48,7 @@ const IMPLICIT_FS: &str = include_str!("shaders/implicit_fs.glsl");
 fn main() {
     let (event_loop, display) = create_window();
 
-    let block_pallette = texture_from_file("block-palette.png", &display);
+    let block_pallette = texture_from_file("block-palette-tiling.png", &display);
 
     let mut controls = SmoothMeshOptions::default();
     let mut polygonization_options = controls.into();
@@ -58,6 +58,7 @@ fn main() {
 
     let mut camera = create_camera(display.get_framebuffer_dimensions());
 
+    let mut rigid_scene = create_rigid_scene(&world, &display);
     let mut discrete_scene = create_discrete_scene(&world, &display);
     let mut implicit_scene = create_implicit_scene(&world, &display);
 
@@ -103,6 +104,12 @@ fn main() {
                     glium::vertex::VertexBuffer::new(&display, &blocks).unwrap()
                 };
                 discrete_scene.update_instance_data(instance_positions);
+
+                let rigid_positions = {
+                    let rigid_blocks = world.get_rigid_blocks_data();
+                    glium::vertex::VertexBuffer::new(&display, &rigid_blocks).unwrap()
+                };
+                rigid_scene.update_instance_data(rigid_positions);
             }
 
             let update_implicit_scene = world.update_smooth_mesh();
@@ -130,13 +137,26 @@ fn main() {
                     &render_state,
                     &block_pallette,
                 ),
-                RenderingMode::Implicit => render_world(
-                    &implicit_scene,
-                    &mut target,
-                    &camera,
-                    &render_state,
-                    &block_pallette,
-                ),
+                RenderingMode::Implicit => {
+                    if config::FILTER_RIGID {
+                        // render rigid blocks
+                        render_world(
+                            &rigid_scene,
+                            &mut target,
+                            &camera,
+                            &render_state,
+                            &block_pallette,
+                        );
+                    }
+                    // render smooth terrain
+                    render_world(
+                        &implicit_scene,
+                        &mut target,
+                        &camera,
+                        &render_state,
+                        &block_pallette,
+                    );
+                }
             }
 
             // Draw ui last so it shows on top of everything
@@ -366,7 +386,7 @@ fn create_window() -> (EventLoop<()>, glium::Display) {
         .with_gl(glium::glutin::GlRequest::Latest)
         .with_gl_profile(glium::glutin::GlProfile::Core)
         .with_depth_buffer(24)
-        .with_vsync(true);
+        .with_vsync(false);
 
     let builder = glium::glutin::window::WindowBuilder::new()
         .with_title(config::TITLE.to_owned())
@@ -375,6 +395,27 @@ fn create_window() -> (EventLoop<()>, glium::Display) {
         glium::Display::new(builder, context, &event_loop).expect("Failed to initialize display");
 
     (event_loop, display)
+}
+
+fn create_rigid_scene<'a>(
+    world: &World,
+    display: &Display,
+) -> RenderPass<'a, model::chunk::BlockData, infrastructure::vertex::TexturedVertex, IndexBuffer<u32>>
+{
+    let (vertex_buffer, indices) = geometry::cube_textured_exclusive_vertex(display);
+    let instance_positions = {
+        let blocks = world.get_rigid_blocks_data();
+        glium::vertex::VertexBuffer::new(display, &blocks).unwrap()
+    };
+
+    let cube_fragment = RenderFragmentBuilder::new()
+        .set_geometry(vertex_buffer, indices)
+        .set_vertex_shader(DISCRETE_VS)
+        .set_fragment_shader(DISCRETE_FS)
+        .build(display)
+        .unwrap();
+
+    RenderPass::new_instanced(cube_fragment, instance_positions)
 }
 
 fn create_discrete_scene<'a>(
@@ -427,7 +468,7 @@ fn create_camera(window_dimensions: (u32, u32)) -> Camera {
 
     Camera::new(
         config::SPAWN_POINT,
-        Point3::origin(),
+        config::SPAWN_DIR,
         Vector3::unit_y(),
         config::FOVY,
         aspect_ratio,

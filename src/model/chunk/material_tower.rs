@@ -1,13 +1,12 @@
-use std::collections::HashSet;
-
 use crate::model::{
-    common::{is_rigid_block, is_visible_block, BlockType, MaterialSetup},
+    common::{is_visible_block, BlockType, MaterialSetup},
     Coord, Real,
 };
 
 const BLOCK_SIZE: Real = 1.0;
 const STACK_HEIGHT: usize = 384;
 const NEGATIVE_HEIGHT_PART: isize = 64;
+
 // Contains blocks from y = -64 to y = 320 in ascending order
 pub struct MaterialStack {
     blocks: Vec<BlockType>,
@@ -19,10 +18,6 @@ fn index_to_height(index: usize) -> isize {
 
 fn height_to_index(height: isize) -> usize {
     (height + NEGATIVE_HEIGHT_PART) as usize
-}
-
-fn is_smoothable_block(material: BlockType) -> bool {
-    is_visible_block(material) && !is_rigid_block(material)
 }
 
 impl MaterialStack {
@@ -125,6 +120,22 @@ impl MaterialStack {
             .enumerate()
             .filter(|(_i, material)| is_visible_block(**material))
             .map(|(i, material)| (index_to_height(i), material.clone()))
+    }
+
+    pub fn iter_blocks_in_range(
+        &self,
+        y_low: Coord,
+        y_high: Coord,
+    ) -> impl Iterator<Item = (isize, BlockType)> + '_ {
+        let low_floor = y_low.floor();
+        let high_ceil = y_high.ceil();
+        let low_index = height_to_index(low_floor as isize);
+        let high_index = height_to_index(high_ceil as isize);
+
+        let intersecting_blocks =
+            (low_index..high_index).map(|i| (index_to_height(i), self.blocks[i].clone()));
+
+        intersecting_blocks
     }
 
     pub fn get_block_at_y(&self, y: isize) -> BlockType {

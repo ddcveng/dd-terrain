@@ -52,6 +52,8 @@ vec2 get_pallette_offset(uint material_index) {
             return vec2(0, 0);
         case 14: // Glass
             return vec2(1, 0);
+        case 15: // Cactus
+            return vec2(2, 0);
         default: // The last pallette element contains some invalid texture
             return vec2(MAX_PALLETTE_OFFSET, 0);
     }
@@ -125,11 +127,6 @@ vec3 get_projection_coefficients_arches(vec3 normal) {
     float beta = np.y / pnorm;
     float gamma = np.z / pnorm;
 
-    float sum = alpha + beta + gamma;
-    alpha /= sum;
-    beta /= sum;
-    gamma /= sum;
-
     return vec3(alpha, beta, gamma);
 }
 
@@ -149,7 +146,7 @@ vec4 assemble_color(vec3 world_position, vec3 normal) {
     float y = fract(world_position.y);
     float z = fract(world_position.z);
 
-    vec3 projection_coefficients = get_projection_coefficients_arches(normal);
+    vec3 projection_coefficients = get_projection_coefficients(normal);
     float alpha = projection_coefficients.x;
     float beta = projection_coefficients.y;
     float gamma = projection_coefficients.z;

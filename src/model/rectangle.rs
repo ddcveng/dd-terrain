@@ -2,7 +2,7 @@ use super::{Coord, PlanarPosition};
 
 #[derive(Copy, Clone)]
 pub struct Rectangle {
-    pub origin: PlanarPosition,
+    pub origin: PlanarPosition, // Bottom left point of the  rectangle
     pub width: Coord,
     pub height: Coord,
 }

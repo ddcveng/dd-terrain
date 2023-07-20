@@ -24,7 +24,8 @@ pub enum BlockType {
     RedSand = 12,
     Cobblestone = 13,
     Glass = 14,
-    Unknown = 15,
+    Cactus = 15,
+    Unknown = 16,
 }
 
 impl TryFrom<usize> for BlockType {
@@ -46,6 +47,7 @@ impl TryFrom<usize> for BlockType {
             x if x == BlockType::RedSand as usize => Ok(BlockType::RedSand),
             x if x == BlockType::Cobblestone as usize => Ok(BlockType::Cobblestone),
             x if x == BlockType::Glass as usize => Ok(BlockType::Glass),
+            x if x == BlockType::Cactus as usize => Ok(BlockType::Cactus),
             _ => Err(()),
         }
     }
@@ -71,6 +73,7 @@ pub fn get_pallette_texture_coords(block_type: BlockType) -> [f32; 2] {
         BlockType::RedSand => (3, 1),
         BlockType::Cobblestone => (0, 0),
         BlockType::Glass => (1, 0),
+        BlockType::Cactus => (2, 0),
         _ => (3, 0),
     };
 
@@ -169,11 +172,12 @@ impl MaterialSetup {
     }
 }
 
-pub const RIGID_MATERIALS: [BlockType; 5] = [
+pub const RIGID_MATERIALS: [BlockType; 6] = [
     BlockType::Wood,
     BlockType::Cobblestone,
     BlockType::Planks,
     BlockType::Glass,
+    BlockType::Cactus,
     BlockType::Unknown,
 ];
 
@@ -183,6 +187,6 @@ pub fn is_rigid_block(material: BlockType) -> bool {
 
     //let bit_value = 1 << material_index;
     //(RIGID_MATERIALS & bit_value) != 0
-    matches!(material, BlockType::Wood)
-    //RIGID_MATERIALS.contains(&material)
+    //matches!(material, BlockType::Wood)
+    RIGID_MATERIALS.contains(&material)
 }

@@ -26,7 +26,13 @@ pub fn polygonize(
 
 #[derive(Clone, Copy)]
 pub struct PolygonizationOptions {
+    // Radius of the cube used as the convolution kernel used for density evaluation
+    // NOTE: if this is larger than 1.0, 1 block thick walls will disappear
     pub kernel_size: Coord,
+
+    // The jump in quality between 1.0 and 0.9 is insane!
+    //
+    // This value should divide block size without remainder or weird artefacts occure when building
     pub marching_cubes_cell_size: Real,
     pub y_low_limit: Coord,
     pub y_size: Coord,

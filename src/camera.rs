@@ -1,7 +1,7 @@
 use crate::{
     config,
     input::Direction,
-    model::{Position, Real},
+    model::{Coord, Position, Real},
     InputAction, InputConsumer, RenderState,
 };
 use cgmath::{
@@ -27,7 +27,7 @@ pub struct Camera {
 impl Camera {
     pub fn new(
         position: Position,
-        look_at: Position,
+        look_to: Vector3<Coord>,
         world_up_vector: Vector3<Real>,
         fovy: Rad<Real>,
         aspect_ratio: Real,
@@ -35,7 +35,7 @@ impl Camera {
         far_clipping_plane: Real,
     ) -> Self {
         let projection = perspective(fovy, aspect_ratio, near_clipping_plane, far_clipping_plane);
-        let view = Matrix4::<Real>::look_at_rh(position, look_at, world_up_vector);
+        let view = Matrix4::<Real>::look_to_rh(position, look_to, world_up_vector);
         let view_inverse = view.invert().unwrap();
 
         Camera {

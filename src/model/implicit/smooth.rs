@@ -1,17 +1,20 @@
 use cgmath::Vector3;
 
 use crate::{
+    config,
     infrastructure::texture::MaterialBlend,
     minecraft,
     model::{
-        polygonize::{polygonize, Mesh, Rectangle3D, PolygonizationOptions},
+        common::{BlockType, MaterialSetup, RIGID_MATERIALS},
+        discrete::{World, WorldChunks},
+        polygonize::{polygonize, Mesh, PolygonizationOptions, Rectangle3D},
         rectangle::Rectangle,
-        Coord, PlanarPosition, Position, Real, discrete::{WorldChunks, World}, common::{MaterialSetup, BlockType, RIGID_MATERIALS},
+        Coord, PlanarPosition, Position, Real,
     },
 };
 
-use super::sdf;
 use super::normal;
+use super::sdf;
 
 pub fn get_density(world: &World, point: Position, kernel_size: Coord) -> Real {
     let chunks = world.get_chunks();
@@ -62,7 +65,11 @@ impl Kernel {
     }
 }
 
-pub fn polygonize_chunk(chunks: &WorldChunks, chunk_index: usize, options: PolygonizationOptions) -> Mesh {
+pub fn polygonize_chunk(
+    chunks: &WorldChunks,
+    chunk_index: usize,
+    options: PolygonizationOptions,
+) -> Mesh {
     let chunk = chunks[chunk_index].clone();
     let support_xz = chunk.position.get_global_position();
 
@@ -79,19 +86,43 @@ pub fn polygonize_chunk(chunks: &WorldChunks, chunk_index: usize, options: Polyg
     let terrain_mesh = {
         let terrain_setup = terrain_setup();
 
-        let density_func = |p| evaluate_density_rigid(&chunks, p, options.kernel_size, &terrain_setup);
-
-        let material_func = |p| sample_materials(&chunks, p, material_sample_kernel_size(options.kernel_size), &terrain_setup);
+        let density_func =
+            |p| evaluate_density_rigid(&chunks, p, options.kernel_size, &terrain_setup);
+        let material_func = |p| {
+            sample_materials(
+                &chunks,
+                p,
+                material_sample_kernel_size(options.kernel_size),
+                &terrain_setup,
+            )
+        };
 
         polygonize(support, density_func, material_func, options)
     };
 
+    if config::MULTIPASS == false {
+        return terrain_mesh;
+    }
+
     let leaves_mesh = {
         let leaves_setup = MaterialSetup::include([BlockType::Leaves], []);
 
-        let leaves_kernel_size = 0.9;
-        let density_func = |p| evaluate_density_rigid(&chunks, p, leaves_kernel_size, &leaves_setup);
-        let material_func = |p| sample_materials(&chunks, p, material_sample_kernel_size(leaves_kernel_size), &leaves_setup);
+        let leaves_kernel_size = if config::LOCK_LEAVES {
+            0.9
+        } else {
+            options.kernel_size
+        };
+
+        let density_func =
+            |p| evaluate_density_rigid(&chunks, p, leaves_kernel_size, &leaves_setup);
+        let material_func = |p| {
+            sample_materials(
+                &chunks,
+                p,
+                material_sample_kernel_size(leaves_kernel_size),
+                &leaves_setup,
+            )
+        };
 
         polygonize(support, density_func, material_func, options)
     };
@@ -100,9 +131,14 @@ pub fn polygonize_chunk(chunks: &WorldChunks, chunk_index: usize, options: Polyg
 }
 
 const RIGID_BLOCK_SMOOTHNESS: Real = 1.0;
-fn evaluate_density_rigid(model: &WorldChunks, point: Position, kernel_size: Coord, material_setup: &MaterialSetup) -> Real {
+fn evaluate_density_rigid(
+    model: &WorldChunks,
+    point: Position,
+    kernel_size: Coord,
+    material_setup: &MaterialSetup,
+) -> Real {
     let model_distance = -evaluate_density(model, point, kernel_size, material_setup);
-    let rigid_distance = distance_to_rigid_blocks(model, point, material_setup);
+    let rigid_distance = distance_to_rigid_blocks(model, point, kernel_size, material_setup);
 
     match rigid_distance {
         //Some(distance) => model_distance.min(distance),
@@ -111,42 +147,39 @@ fn evaluate_density_rigid(model: &WorldChunks, point: Position, kernel_size: Coo
     }
 }
 
-fn distance_to_rigid_blocks(chunks: &WorldChunks, point: Position, material_setup: &MaterialSetup) -> Option<Real> {
+fn distance_to_rigid_blocks(
+    chunks: &WorldChunks,
+    point: Position,
+    kernel_size: Coord,
+    material_setup: &MaterialSetup,
+) -> Option<Real> {
     if material_setup.no_rigid() {
         return None;
     }
 
-    let kernel = Kernel::new(point, 0.5);
+    let kernel = Kernel::new(point, kernel_size);
     let kernel_box = kernel.get_bounding_rectangle();
+    let y_low = kernel.y_low();
+    let y_high = kernel.y_high();
 
-    let intersected_chunks = chunks.iter().filter(|chunk| {
-        chunk
-            .get_bounding_rectangle()
-            .intersect(kernel_box)
-            .is_some()
-    });
+    let closest_rigid_block = chunks
+        .iter()
+        .filter_map(|chunk| {
+            chunk
+                .get_bounding_rectangle()
+                .intersect(kernel_box)
+                .map(|intersection| (chunk, intersection))
+        })
+        .filter_map(|(chunk, intersection)| {
+            chunk.get_closest_rigid_block(intersection, y_low, y_high, material_setup, point)
+        })
+        .min_by(|(_, _, dist1), (_, _, dist2)| dist1.total_cmp(dist2));
 
-    let closest_rigid_block_per_chunk = intersected_chunks
-        .map(|chunk| chunk.get_closest_rigid_block(point, material_setup))
-        .filter_map(|rigid_block_option| rigid_block_option);
-
-    let Some(closest_rigid_block) =
-        closest_rigid_block_per_chunk.fold(None, |min_dist, dist| match min_dist {
-            None => Some(dist),
-            Some(val) => {
-                if dist.1 < val.1 {
-                    Some(dist)
-                } else {
-                    min_dist
-                }
-            }
-        }) 
-    else {
+    let Some((rigid_block_position, _, _)) = closest_rigid_block else {
         return None;
     };
 
-    let block_position = closest_rigid_block.0.position;
-    let block_local_point = point.zip(block_position, |k, b| k - b);
+    let block_local_point = point.zip(rigid_block_position, |k, b| k - b);
 
     Some(sdf::unit_cube_exact(block_local_point))
 }
@@ -162,16 +195,14 @@ fn smooth_minimum(a: Real, b: Real, k: Real) -> Real {
     a.min(b) - h * h * k * 0.25
 }
 
-// Radius of the cube used as the convolution kernel used for density evaluation
-// NOTE: if this is larger than 1.0, 1 block thick walls will disappear
-const DENSITY_SIGMA: Coord = 0.9;
-const KERNEL_VOLUME: Real = 8.0 * DENSITY_SIGMA * DENSITY_SIGMA * DENSITY_SIGMA;
-const KERNEL_VOLUME_HALF: Real = KERNEL_VOLUME / 2.0;
-
-
 // 2 * (material_volume / kernel_volume) - 1
 // returns values in range [-1., 1.]
-fn evaluate_density(chunks: &WorldChunks, point: Position, kernel_size: Coord, material_setup: &MaterialSetup) -> Real {
+fn evaluate_density(
+    chunks: &WorldChunks,
+    point: Position,
+    kernel_size: Coord,
+    material_setup: &MaterialSetup,
+) -> Real {
     let kernel = Kernel::new(point, kernel_size);
     return sample_volume(chunks, kernel, material_setup) / kernel.volume_half() - 1.0;
 }
@@ -189,19 +220,19 @@ fn sample_volume(chunks: &WorldChunks, kernel: Kernel, material_setup: &Material
 
         let offset = chunk.position.get_global_position().map(|coord| -coord);
         let intersection_local = intersection.offset_origin(offset);
-        let chunk_volume = chunk.get_chunk_intersection_volume(intersection_local, y_low, y_high, material_setup);
+        let chunk_volume =
+            chunk.get_chunk_intersection_volume(intersection_local, y_low, y_high, material_setup);
 
         acc + chunk_volume
     })
 }
 
-// The smoothing process shrinks the world down a little
-// so the material kernel shouldn't be much smaller than the density kernel.
-// Otherwise artefacts may show up for places where the material kernel did not find
-// any intersecting blocks
-const MATERIAL_SIGMA: Coord = 0.6;
-
-fn sample_materials(chunks: &WorldChunks, point: Position, kernel_size: Coord, material_setup: &MaterialSetup) -> MaterialBlend {
+fn sample_materials(
+    chunks: &WorldChunks,
+    point: Position,
+    kernel_size: Coord,
+    material_setup: &MaterialSetup,
+) -> MaterialBlend {
     let kernel = Kernel::new(point, kernel_size);
     let kernel_box = kernel.get_bounding_rectangle();
     let y_low = kernel.y_low();
@@ -217,7 +248,8 @@ fn sample_materials(chunks: &WorldChunks, point: Position, kernel_size: Coord, m
 
             let offset = chunk.position.get_global_position().map(|coord| -coord);
             let intersection_local = intersection.offset_origin(offset);
-            let chunk_volume = chunk.get_material_blend(intersection_local, y_low, y_high, material_setup);
+            let chunk_volume =
+                chunk.get_material_blend(intersection_local, y_low, y_high, material_setup);
 
             blend.merge(chunk_volume);
             blend
@@ -225,9 +257,17 @@ fn sample_materials(chunks: &WorldChunks, point: Position, kernel_size: Coord, m
 }
 
 fn terrain_setup() -> MaterialSetup {
-    MaterialSetup::exclude([BlockType::Leaves], RIGID_MATERIALS)
+    if config::MULTIPASS {
+        MaterialSetup::exclude([BlockType::Leaves], RIGID_MATERIALS)
+    } else {
+        MaterialSetup::all_smooth(RIGID_MATERIALS)
+    }
 }
 
+// The smoothing process shrinks the world down a little
+// so the material kernel shouldn't be much smaller than the density kernel.
+// Otherwise artefacts may show up for places where the material kernel did not find
+// any intersecting blocks
 fn material_sample_kernel_size(density_kernel_size: Coord) -> Coord {
     (density_kernel_size - 0.3).max(0.6)
 }

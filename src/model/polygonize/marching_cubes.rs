@@ -11,16 +11,6 @@ use crate::model::implicit::normal;
 
 use super::PolygonizationOptions;
 
-// The jump in quality between 1.0 and 0.9 is insane!
-//
-// This value should divide block size without remainder or weird artefacts occure when building
-// the mesh - TODO: why?
-//
-// TODO: maybe control the cell size through a different variable
-// for example something like mesh subdivision factor : usize and
-// if it has value x it means divide block in x*x*x cells
-const CELL_SIZE: Real = 0.5;
-
 // Needs to be slightly larger than 0, even though we want to display the isosurface at 0.
 // Otherwise we get weird aliasing when rendering implicit blocks
 const SURFACE_LEVEL: Real = 0.0001;
@@ -138,7 +128,7 @@ fn build_mesh_vertices(
 ) -> Vec<MeshVertex> {
     let build_vertex = |vertex_position, vertex_normal: Vector3<Real>| {
         //let normal = normal::gradient(density_func, vertex_position);
-        //let normal = vertex_normal.normalize();
+        let normal = vertex_normal.normalize();
         let blend = material_func(vertex_position);
         let weights = blend.into_material_weights();
 
@@ -148,11 +138,7 @@ fn build_mesh_vertices(
                 vertex_position.y as f32,
                 vertex_position.z as f32,
             ],
-            normal: [
-                vertex_normal.x as f32,
-                vertex_normal.y as f32,
-                vertex_normal.z as f32,
-            ],
+            normal: [normal.x as f32, normal.y as f32, normal.z as f32],
             vertex_material_weights: weights,
         }
     };
@@ -164,7 +150,6 @@ fn build_mesh_vertices(
     let vertices = vertex_positions
         .iter()
         .zip(vertex_normals.iter())
-        //.map(|(pos, normal)| build_vertex(*pos, *normal))
         .map(|(pos, normal)| build_vertex(*pos, *normal))
         .collect();
 

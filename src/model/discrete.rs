@@ -20,12 +20,9 @@ use crate::model::implicit::smooth::polygonize_chunk;
 use crate::time_it;
 
 use super::chunk::{BlockData, Chunk, ChunkPosition};
-use super::common::get_pallette_texture_coords;
-use super::common::is_visible_block;
 use super::common::BlockType;
 use super::polygonize::Mesh;
 use super::polygonize::PolygonizationOptions;
-use super::Coord;
 use super::Position;
 
 const CHUNKS_IN_WORLD: usize = WORLD_SIZE * WORLD_SIZE;
@@ -118,30 +115,6 @@ fn get_difference(original: &ChunkPosition, different: &ChunkPosition) -> (i32, 
     (diff_x, diff_z)
 }
 
-fn clamp_chunk_index(i: i32) -> Option<usize> {
-    if i >= 0 && (i as usize) < config::WORLD_SIZE {
-        return Some(i as usize);
-    }
-
-    None
-}
-
-fn get_iterator(from: usize, to: usize, reverse: bool) -> Box<dyn Iterator<Item = usize>> {
-    if reverse {
-        Box::new((from..to).rev())
-    } else {
-        Box::new(from..to)
-    }
-}
-
-fn create_block_data(position: Position, material: BlockType) -> BlockData {
-    BlockData {
-        offset: [position.x as f32, position.y as f32, position.z as f32],
-        pallette_offset: get_pallette_texture_coords(material),
-    }
-}
-
-const BLOCK_SIZE: Coord = 1.0;
 const OFFSET_FROM_CENTER: usize = config::WORLD_SIZE / 2;
 
 impl World {
@@ -175,60 +148,6 @@ impl World {
         }
     }
 
-    // A block is only visible if there is at least 1 air block
-    // in its neighborhood
-    fn is_position_visible(&self, position: Position) -> bool {
-        let left = Position::new(position.x - BLOCK_SIZE, position.y, position.z);
-        let right = Position::new(position.x + BLOCK_SIZE, position.y, position.z);
-        let down = Position::new(position.x, position.y - BLOCK_SIZE, position.z);
-        let up = Position::new(position.x, position.y + BLOCK_SIZE, position.z);
-        let forward = Position::new(position.x, position.y, position.z - BLOCK_SIZE);
-        let back = Position::new(position.x, position.y, position.z + BLOCK_SIZE);
-
-        let neighbors = [left, right, up, down, forward, back];
-        return neighbors
-            .into_iter()
-            .any(|pos| !is_visible_block(self.get_block(pos))); // @Speed
-    }
-
-    // This method is too slow!
-    //
-    // it takes over 600ms to execute for 100 chunks with full height.
-    // We have a couple of options here:
-    // 1. run this in a separate thread and update the  rendered geometry when done.
-    // 2. cache this per chunk, can be evaluated in another thread while the chunk is being loaded.
-    //    then the main thread only has to assemble the blocks into the buffer, which shouldn't
-    //    take too long hopefully. Doing this locally will have the downside of including blocks
-    //    that are not visible and are occluded by blocks from another chunks, which we don't know.
-    //
-    // 2!
-    //
-    // In the worst case this method will return ~2/3 of the raw amount of blocks, but on average
-    // the number should be much lower.
-    //    pub fn get_surface_block_data(&self, y_low: isize, y_high: isize) -> Vec<BlockData> {
-    //        self.chunks
-    //            .iter()
-    //            .flat_map(|chunk| {
-    //                let chunk_offset = chunk.position.get_global_position();
-    //                // println!("pos {:?} offset {:?}", chunk.position, chunk_offset);
-    //
-    //                chunk
-    //                    .enumerate_blocks(y_low, y_high)
-    //                    .map(move |(relative_position, material)| {
-    //                        let position = Position::new(
-    //                            relative_position.x + chunk_offset.x as Coord,
-    //                            relative_position.y,
-    //                            relative_position.z + chunk_offset.y as Coord,
-    //                        );
-    //
-    //                        (position, material)
-    //                    })
-    //                    .filter(|(position, _)| self.is_position_visible(*position))
-    //                    .map(move |(position, material)| create_block_data(position, material))
-    //            })
-    //            .collect()
-    //    }
-
     // Note: this allocates a bunch of *unnecessary* vectors
     // but I'm not sure if there is another way
     pub fn get_surface_block_data(&self) -> Vec<BlockData> {
@@ -245,6 +164,8 @@ impl World {
             .collect()
     }
 
+    // Do not filter the blocks in any way - for debug purposes
+    #[allow(unused)]
     pub fn get_block_data(&self) -> Vec<BlockData> {
         let mut blocks = Vec::<BlockData>::new();
 
@@ -297,33 +218,14 @@ impl World {
         }
     }
 
+    // This method does not do the actual updating.
+    // Instead, it will manage the worker thread that does it.
     // Returns true if a new part of the world was loaded
     pub fn update_chunk_data(
         &mut self,
         new_position: Position,
         options: PolygonizationOptions,
     ) -> bool {
-        // this method does not do the actual updating
-        // instead, it will manage the worker thread that does it.
-        // the can only be 1 ongoing update at a time.
-        // if there is one and it is finished -> integrate the changes
-        //                     is is still running -> return false
-        // if no update is happening -> check if we need an update and start it
-        //
-        // ---------------
-        // What happens if we need to update, but there is an update in progress?
-        // - dont do anything -> we may miss an update
-        // - queue the updates and always schedule the first one in the queue -> complexity
-        //
-        // can the center() method handle offsets of more than 1 chunk?
-        // if it can, it wouldn't matter that we missed an update.
-        // Missing is only a problem if the update took so long we traveled an entire chunk without
-        // it finishing. This shouldn't be a problem as the update doesn't take too long.
-        // We can miss an update by quickly going back and forth on a chunk boundary, but in this
-        // case, skipping the updates is actually benefitial as they are pretty much wasted.
-        //
-        //
-
         // Only 1 update can be running at any time
         if let Some(world_change) = &self.world_change {
             let builder = &world_change.1;
@@ -530,8 +432,10 @@ impl World {
             let original_position = &chunks[current_chunk_index].position;
             let position_to_load = original_position.offset(direction_x, direction_z);
 
+            time_it!("Chunk LOAD",
             let mut chunk = minecraft::get_chunk(position_to_load);
             chunk.build_surface();
+            );
 
             let chunk_load = ChunkChange(current_chunk_index, ChunkSource::Direct(chunk));
 
@@ -540,65 +444,6 @@ impl World {
 
         chunks_swaps.chain(chunk_loads).collect_vec()
     }
-
-    //    fn center_loaded_chunks(&mut self, center_chunk_position: ChunkPosition) {
-    //        // Get the direction of change
-    //        let (direction_x, direction_z) = get_difference(&self.center, &center_chunk_position);
-    //        self.center = center_chunk_position;
-    //
-    //        // Update the world matrix by either shifting chunks based on the direction, or loading
-    //        // needed chunks
-    //        let reverse_x = direction_x < 0;
-    //        let reverse_z = direction_z < 0;
-    //
-    //        let mut chunks_loaded = 0;
-    //        let now = Instant::now();
-    //
-    //        // TODO: comment what does this do
-    //        for z in get_iterator(0, WORLD_SIZE, reverse_z) {
-    //            for x in get_iterator(0, WORLD_SIZE, reverse_x) {
-    //                let next_x = x as i32 + direction_x;
-    //                let next_z = z as i32 + direction_z;
-    //
-    //                let current_chunk_index = World::chunk_index(x, z);
-    //                if let Some(next_x) = clamp_chunk_index(next_x) {
-    //                    if let Some(next_z) = clamp_chunk_index(next_z) {
-    //                        let next_index = World::chunk_index(next_x, next_z);
-    //
-    //                        self.chunks.swap(current_chunk_index, next_index);
-    //                        self.chunk_meshes.swap(current_chunk_index, next_index);
-    //                        continue;
-    //                    }
-    //                }
-    //
-    //                let original_x =
-    //                    min(max(x as i32 - direction_x, 0), WORLD_SIZE as i32 - 1) as usize;
-    //                let original_z =
-    //                    min(max(z as i32 - direction_z, 0), WORLD_SIZE as i32 - 1) as usize;
-    //
-    //                let original_index = World::chunk_index(original_x, original_z);
-    //                let original_position = &self.chunks[original_index].position;
-    //                let position_to_load = original_position.offset(direction_x, direction_z);
-    //
-    //                let now = Instant::now();
-    //                let new_chunk =
-    //                    Arc::new(minecraft::get_chunk(&self.region_loader, position_to_load));
-    //
-    //                let elapsed = now.elapsed();
-    //                println!("-------------- getting new chunk took {elapsed:.2?}");
-    //
-    //                self.chunks[current_chunk_index] = new_chunk;
-    //                self.chunk_meshes[current_chunk_index] = Lazy::new();
-    //                chunks_loaded += 1;
-    //            }
-    //        }
-    //
-    //        let elapsed = now.elapsed();
-    //        println!(
-    //            "Update world took {:.2?} ({} new chunks loaded)",
-    //            elapsed, chunks_loaded
-    //        );
-    //    }
 
     fn chunk_index(x: usize, z: usize) -> usize {
         z * config::WORLD_SIZE + x
@@ -618,157 +463,6 @@ impl World {
         let (block_x, block_z) = Chunk::get_block_coords(position.x, position.z);
         chunk.get_block(block_x, position.y.floor() as isize, block_z)
     }
-
-    //    pub fn sample_volume(&self, kernel: Kernel) -> Real {
-    //        let kernel_box = kernel.get_bounding_rectangle();
-    //        let y_low = kernel.y_low();
-    //        let y_high = kernel.y_high();
-    //
-    //        self.chunks.iter().fold(0.0, |acc, chunk| {
-    //            let chunk_box = chunk.get_bounding_rectangle();
-    //            let Some(intersection) = chunk_box.intersect(kernel_box) else {
-    //                return acc;
-    //            };
-    //
-    //            let offset = chunk.position.get_global_position().map(|coord| -coord);
-    //            let intersection_local = intersection.offset_origin(offset);
-    //            let chunk_volume =
-    //                chunk.get_chunk_intersection_volume(intersection_local, y_low, y_high);
-    //
-    //            acc + chunk_volume
-    //        })
-    //    }
-
-    //    pub fn distance_to_rigid_blocks(&self, point: Position) -> Option<Real> {
-    //        let kernel = Kernel::new(point, 0.5);
-    //        let kernel_box = kernel.get_bounding_rectangle();
-    //
-    //        let intersected_chunks = self.chunks.iter().filter(|chunk| {
-    //            chunk
-    //                .get_bounding_rectangle()
-    //                .intersect(kernel_box)
-    //                .is_some()
-    //        });
-    //
-    //        let closest_rigid_block_per_chunk = intersected_chunks
-    //            .map(|chunk| chunk.get_closest_rigid_block(point))
-    //            .filter_map(|rigid_block_option| rigid_block_option);
-    //
-    //        let Some(closest_rigid_block) =
-    //            closest_rigid_block_per_chunk.fold(None, |min_dist, dist| match min_dist {
-    //                None => Some(dist),
-    //                Some(val) => {
-    //                    if dist.1 < val.1 {
-    //                        Some(dist)
-    //                    } else {
-    //                        min_dist
-    //                    }
-    //                }
-    //            })
-    //        else {
-    //            return None;
-    //        };
-    //
-    //        let block_position = closest_rigid_block.0.position;
-    //        let block_local_point = point.zip(block_position, |k, b| k - b);
-    //
-    //
-    //        Some(sdf_unit_cube_exact(block_local_point))
-    //    }
-
-    //    pub fn sample_materials(&self, kernel: Kernel) -> MaterialBlend {
-    //        let kernel_box = kernel.get_bounding_rectangle();
-    //        let y_low = kernel.y_low();
-    //        let y_high = kernel.y_high();
-    //
-    //        self.chunks
-    //            .iter()
-    //            .fold(MaterialBlend::new(), |mut blend, chunk| {
-    //                let chunk_box = chunk.get_bounding_rectangle();
-    //                let Some(intersection) = chunk_box.intersect(kernel_box) else {
-    //                    return blend;
-    //                };
-    //
-    //                let offset = chunk.position.get_global_position().map(|coord| -coord);
-    //                let intersection_local = intersection.offset_origin(offset);
-    //                let chunk_volume = chunk.get_material_blend(intersection_local, y_low, y_high);
-    //
-    //                blend.merge(chunk_volume);
-    //                blend
-    //            })
-    //    }
-
-    //    fn polygonize_chunk(&self, chunk: &Chunk) -> Mesh {
-    //        let support_xz = chunk.position.get_global_position();
-    //
-    //        let support_low_y = 40.0; // TODO: use MIN_Y
-    //        let support_y_size = 40.0; // TODO: use full chunk height
-    //
-    //        let support = Rectangle3D {
-    //            position: Position::new(support_xz.x, support_low_y, support_xz.y),
-    //            width: minecraft::BLOCKS_IN_CHUNK as Real,
-    //            depth: minecraft::BLOCKS_IN_CHUNK as Real,
-    //            height: support_y_size,
-    //        };
-    //
-    //        let density_func = |p| super::implicit::evaluate_density_rigid(self, p);
-    //        let material_func = |p| super::implicit::sample_materials(self, p);
-    //
-    //        super::polygonize::polygonize(support, density_func, material_func)
-    //    }
-
-    // 1. calculate support for each chunk
-    // 2. polygonize each chunk separately
-    // 3. merge the meshes of each chunk into one big mesh,
-    //    that is the mesh we return
-    //    pub fn polygonize(&self) -> (Mesh, usize) {
-    //        // To evaluate the sdf at a point, we need data in a radius around that point.
-    //        // For the chunks that are on the edges of the (loaded) world we are missing data,
-    //        // resulting in artifacts when stitching the chunk meshes together.
-    //        //
-    //        // For now the simple solution is just to polygonize only the chunks that have all
-    //        // neighboring chunks loaded.
-    //        let chunk_indices = (1..WORLD_SIZE - 1)
-    //            .cartesian_product(1..WORLD_SIZE - 1)
-    //            .map(|(x, z)| World::chunk_index(x, z))
-    //            .collect::<Vec<usize>>();
-    //
-    //        let chunks_without_mesh = chunk_indices
-    //            .iter()
-    //            .filter(|&index| self.chunk_meshes[*index].get().is_none())
-    //            .count();
-    //
-    //        // Create the meshes in parallel
-    //        let chunk_meshes = chunk_indices
-    //            .into_par_iter()
-    //            .map(|chunk_index| {
-    //                let chunk = &self.chunks[chunk_index];
-    //                let mesh_creator = || Mesh::empty(); //self.polygonize_chunk(chunk);
-    //
-    //                let chunk_mesh = self.chunk_meshes[chunk_index].get_or_create(mesh_creator);
-    //                chunk_mesh
-    //            })
-    //            .collect::<Vec<&Mesh>>();
-    //
-    //        let world_mesh = Mesh::merge(chunk_meshes.into_iter());
-    //
-    //        //        // Serial implementation
-    //        //        let mut world_mesh = Mesh::empty();
-    //        //        for x in 1..WORLD_SIZE - 1 {
-    //        //            for z in 1..WORLD_SIZE - 1 {
-    //        //                let chunk_index = World::chunk_index(x, z);
-    //        //
-    //        //                let chunk = &self.chunks[chunk_index];
-    //        //
-    //        //                let mesh_creator = || self.polygonize_chunk(chunk);
-    //        //                let chunk_mesh = self.chunk_meshes[chunk_index].get_or_create(mesh_creator);
-    //        //
-    //        //                chunk_mesh.copy_into(&mut world_mesh);
-    //        //            }
-    //        //        }
-    //
-    //        (world_mesh, chunks_without_mesh)
-    //    }
 
     // TODO: this can be const and return fixed sized array that depends on WORLD_SIZe
     fn inner_chunk_indices() -> Vec<usize> {

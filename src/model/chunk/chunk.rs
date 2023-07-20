@@ -2,9 +2,12 @@ use std::cmp::min;
 
 use super::material_tower::MaterialStack;
 use super::ChunkPosition;
+use crate::config;
 use crate::infrastructure::texture::MaterialBlend;
-use crate::minecraft;
-use crate::model::common::{get_pallette_texture_coords, is_rigid_block, BlockType, is_visible_block, MaterialSetup};
+use crate::minecraft::{self, BLOCKS_IN_CHUNK, MAX_BLOCK_Y, MIN_BLOCK_Y};
+use crate::model::common::{
+    get_pallette_texture_coords, is_rigid_block, is_visible_block, BlockType, MaterialSetup,
+};
 use crate::model::rectangle::Rectangle;
 use crate::model::{Coord, Position, Real};
 
@@ -21,11 +24,7 @@ pub struct BlockData {
     pub offset: [f32; 3],
     pub pallette_offset: [f32; 2],
 }
-implement_vertex!(
-    BlockData,
-    offset,
-    pallette_offset
-);
+implement_vertex!(BlockData, offset, pallette_offset);
 
 impl BlockData {
     pub fn create(offset: Position, material: BlockType) -> Self {
@@ -97,6 +96,8 @@ fn get_block_portion_in_range(block_start: usize, range_start: Coord, range_end:
     portion
 }
 
+const MAX_BLOCK_INDEX: usize = BLOCKS_IN_CHUNK - 1;
+
 impl Chunk {
     pub fn new(chunk_position: ChunkPosition) -> Self {
         Chunk {
@@ -130,10 +131,10 @@ impl Chunk {
             // TODO: does this make sense? why not have the blocks centered by default?
             // TODO: this offset is reversed in the shader, this is weird and probably shouldn't be
             // done at all.
-            let offset_position = position.map(|x| x + 0.5);
+            //let offset_position = position.map(|x| x + 0.5);
 
             let rigid_record = RigidBlockRecord {
-                position: offset_position,
+                position, //offset_position,
                 material: block,
             };
 
@@ -170,15 +171,13 @@ impl Chunk {
     pub fn get_rigid_block_data(&self) -> Vec<BlockData> {
         self.rigid_blocks
             .iter()
-            .map(|rigid_record| {
-                BlockData {
-                    offset: [
-                        rigid_record.position.x as f32,
-                        rigid_record.position.y as f32,
-                        rigid_record.position.z as f32,
-                    ],
-                    pallette_offset: get_pallette_texture_coords(rigid_record.material),
-                }
+            .map(|rigid_record| BlockData {
+                offset: [
+                    rigid_record.position.x as f32,
+                    rigid_record.position.y as f32,
+                    rigid_record.position.z as f32,
+                ],
+                pallette_offset: get_pallette_texture_coords(rigid_record.material),
             })
             .collect()
     }
@@ -196,32 +195,28 @@ impl Chunk {
         tower.get_block_at_y(y)
     }
 
-    pub fn enumerate_blocks(
-        &self,
-        y_low: isize,
-        y_high: isize,
-    ) -> impl Iterator<Item = (Position, BlockType)> + '_ {
-        self.data.iter().enumerate().flat_map(move |(i, tower)| {
-            let block_x = (i % CHUNK_SIZE) as Coord;
-            let block_z = (i / CHUNK_SIZE) as Coord;
+    fn get_block_fallible(&self, x: usize, y: isize, z: usize) -> Option<BlockType> {
+        let any_out_of_range =
+            x >= BLOCKS_IN_CHUNK || z >= BLOCKS_IN_CHUNK || y < MIN_BLOCK_Y || y > MAX_BLOCK_Y - 1;
+        if any_out_of_range {
+            return None;
+        }
 
-            tower
-                .iter_visible_blocks()
-                .filter(move |(block_y, _material)| *block_y >= y_low && *block_y < y_high)
-                .map(move |(block_y, material)| {
-                    let position = Position::new(block_x, block_y as Coord, block_z);
-
-                    (position, material)
-                })
-        })
+        let tower = self.get_tower(x, z);
+        Some(tower.get_block_at_y(y))
     }
 
     pub fn build_surface(&mut self) {
         let chunk_base = self.position.get_global_position();
 
         // Include all inner blocks that have at least 1 invisible neighbor
-        for ((_, lower_row), (row_index, center_row), (_, upper_row)) in self.data.chunks(16).enumerate().tuple_windows() {
-            for column_index in 1..15 {
+        for ((_, lower_row), (row_index, center_row), (_, upper_row)) in self
+            .data
+            .chunks(BLOCKS_IN_CHUNK)
+            .enumerate()
+            .tuple_windows()
+        {
+            for column_index in 1..MAX_BLOCK_INDEX {
                 let left_tower = &center_row[column_index - 1];
                 let center_tower = &center_row[column_index];
                 let right_tower = &center_row[column_index + 1];
@@ -231,7 +226,7 @@ impl Chunk {
                 let x_offset = chunk_base.x + column_index as Coord;
                 let z_offset = chunk_base.y + row_index as Coord;
 
-                for depth in -63..319 {
+                for depth in MIN_BLOCK_Y + 1..MAX_BLOCK_Y - 1 {
                     let center_block = center_tower.get_block_at_y(depth);
                     if !is_visible_block(center_block) {
                         continue;
@@ -244,8 +239,18 @@ impl Chunk {
                     let lower_block = lower_tower.get_block_at_y(depth);
                     let upper_block = upper_tower.get_block_at_y(depth);
 
-                    let neighborhood = [front_block, back_block, left_block, right_block, lower_block, upper_block];
-                    if neighborhood.into_iter().any(|block| !is_visible_block(block)) {
+                    let neighborhood = [
+                        front_block,
+                        back_block,
+                        left_block,
+                        right_block,
+                        lower_block,
+                        upper_block,
+                    ];
+                    if neighborhood
+                        .into_iter()
+                        .any(|block| !is_visible_block(block))
+                    {
                         let block_offset = Position::new(x_offset, depth as Coord, z_offset);
 
                         let block_data = BlockData::create(block_offset, center_block);
@@ -257,10 +262,11 @@ impl Chunk {
 
         // Include all edge blocks since we dont know whether the neighboring chunk obscures them
         for i in 0..self.data.len() {
-            let column = i % 16;
-            let row = i / 16;
+            let column = i % BLOCKS_IN_CHUNK;
+            let row = i / BLOCKS_IN_CHUNK;
 
-            let is_edge = column == 0 || row == 0 || column == 15 || row == 15;
+            let is_edge =
+                column == 0 || row == 0 || column == MAX_BLOCK_INDEX || row == MAX_BLOCK_INDEX;
             if is_edge {
                 let tower = &self.data[i];
                 let tower_blocks = tower.iter_visible_blocks().map(|(depth, material)| {
@@ -276,51 +282,112 @@ impl Chunk {
         }
     }
 
-    // Returns None if there are no rigid blocks
-    pub fn get_closest_rigid_block(&self, position: Position, material_setup: &MaterialSetup) -> Option<(RigidBlockRecord, Real)> {
-        let Some((closest_rigid_block, distance2)) = self
-            .rigid_blocks
-            .iter()
-            .filter(|rigid_record| material_setup.is_rigid(rigid_record.material))
-            .map(|rigid_record| (rigid_record, position.distance2(rigid_record.position)))
-            .fold(None, |min_dist, dist| match min_dist {
-                None => Some(dist),
-                Some(val) => {
-                    if dist.1 < val.1 {
-                        Some(dist)
-                    } else {
-                        min_dist
+    pub fn get_closest_rigid_block(
+        &self,
+        intersection_xz: Rectangle,
+        y_low: Coord,
+        y_high: Coord,
+        material_setup: &MaterialSetup,
+        position: Position,
+    ) -> Option<(Position, BlockType, Real)> {
+        let intersection_start_index_x = get_block_coord(intersection_xz.left());
+        let intersection_start_index_z = get_block_coord(intersection_xz.bottom());
+
+        let intersection_end_index_x = min(
+            minecraft::BLOCKS_IN_CHUNK,
+            (intersection_xz.right() - EPSILON).ceil() as usize,
+        );
+        let intersection_end_index_z = min(
+            minecraft::BLOCKS_IN_CHUNK,
+            (intersection_xz.top() - EPSILON).ceil() as usize,
+        );
+
+        // Iterate over blocks that are intersected
+        let intersection_range = (intersection_start_index_x..intersection_end_index_x)
+            .cartesian_product(intersection_start_index_z..intersection_end_index_z);
+
+        intersection_range
+            .flat_map(|(x, z)| {
+                let tower = self.get_tower(x, z);
+                tower
+                    .iter_blocks_in_range(y_low, y_high)
+                    .map(move |(y, material)| (x, y, z, material))
+            })
+            .filter_map(|(x, y, z, material)| {
+                if material_setup.is_rigid(material) && !matches!(material, BlockType::Unknown) {
+                    if !self.is_rigid_block_allowed(x, y, z, material_setup) {
+                        return None;
                     }
+
+                    let local_block_position = Position::new(x as Coord, y as Coord, z as Coord);
+                    let block_position = self
+                        .to_global_position(local_block_position)
+                        .map(|coord| coord + 0.5); // This offset is evil and should be abolished.
+
+                    Some((block_position, material, block_position.distance2(position)))
+                } else {
+                    None
                 }
-            }) 
-        else {
-            return None;
-        };
+            })
+            .min_by(|(_, _, dist1), (_, _, dist2)| dist1.total_cmp(dist2))
+    }
 
+    fn is_rigid_block_allowed(
+        &self,
+        x: usize,
+        y: isize,
+        z: usize,
+        material_setup: &MaterialSetup,
+    ) -> bool {
+        if config::FILTER_RIGID == false {
+            return true;
+        }
 
-        Some((closest_rigid_block.clone(), distance2))
+        let left = self.get_block_fallible(x - 1, y, z);
+        let right = self.get_block_fallible(x + 1, y, z);
+        let front = self.get_block_fallible(x, y, z - 1);
+        let back = self.get_block_fallible(x, y, z + 1);
+        let top = self.get_block_fallible(x, y + 1, z);
+        let bottom = self.get_block_fallible(x, y - 1, z);
+
+        let neighborhood = [left, right, front, back, top, bottom];
+        let is_block_critical = neighborhood.iter().any(|block| {
+            if let Some(b) = block {
+                return material_setup.is_material_smoothable(*b);
+            } else {
+                return false;
+            }
+        });
+
+        is_block_critical
     }
 
     fn to_global_position(&self, relative_position: Position) -> Position {
         let (chunk_global_x, chunk_global_z) = self.position.get_global_position_in_chunks();
-        let global_offset_blocks_x = (chunk_global_x * (minecraft::BLOCKS_IN_CHUNK as i32)) as Coord;
-        let global_offset_blocks_z = (chunk_global_z * (minecraft::BLOCKS_IN_CHUNK as i32)) as Coord;
+        let global_offset_blocks_x =
+            (chunk_global_x * (minecraft::BLOCKS_IN_CHUNK as i32)) as Coord;
+        let global_offset_blocks_z =
+            (chunk_global_z * (minecraft::BLOCKS_IN_CHUNK as i32)) as Coord;
 
         Position::new(
-            global_offset_blocks_x + relative_position.x, 
-            relative_position.y, 
-            global_offset_blocks_z + relative_position.z)
+            global_offset_blocks_x + relative_position.x,
+            relative_position.y,
+            global_offset_blocks_z + relative_position.z,
+        )
     }
 
     fn to_local_position(&self, global_position: Position) -> Position {
         let (chunk_global_x, chunk_global_z) = self.position.get_global_position_in_chunks();
-        let global_offset_blocks_x = (chunk_global_x * (minecraft::BLOCKS_IN_CHUNK as i32)) as Coord;
-        let global_offset_blocks_z = (chunk_global_z * (minecraft::BLOCKS_IN_CHUNK as i32)) as Coord;
+        let global_offset_blocks_x =
+            (chunk_global_x * (minecraft::BLOCKS_IN_CHUNK as i32)) as Coord;
+        let global_offset_blocks_z =
+            (chunk_global_z * (minecraft::BLOCKS_IN_CHUNK as i32)) as Coord;
 
         Position::new(
-            global_offset_blocks_x - global_position.x, 
-            global_position.y, 
-            global_offset_blocks_z - global_position.z)
+            global_offset_blocks_x - global_position.x,
+            global_position.y,
+            global_offset_blocks_z - global_position.z,
+        )
     }
 
     // Intersection is a rectangle local to the chunk - its origin is in chunk local coordinates
@@ -354,7 +421,9 @@ impl Chunk {
                 get_block_portion_in_range(z, intersection_xz.bottom(), intersection_xz.top());
 
             // Pass here y_low, y_high, smoothable blocks set, rigid blocks set
-            let y_scale = self.get_tower(x, z).get_intersection_size(y_low, y_high, material_setup);
+            let y_scale = self
+                .get_tower(x, z)
+                .get_intersection_size(y_low, y_high, material_setup);
 
             let intersection_volume = x_scale * y_scale * z_scale;
             acc + intersection_volume
@@ -395,7 +464,7 @@ impl Chunk {
             let tower = self.get_tower(x, z);
             for (y_scale, material) in tower
                 .iter_intersecting_blocks(y_low, y_high)
-                .filter(|(_, material)| material_setup.contributes_color(*material)) 
+                .filter(|(_, material)| material_setup.contributes_color(*material))
             {
                 let block_intersection_size = x_scale * y_scale * z_scale;
                 blend.mix(material, block_intersection_size);
