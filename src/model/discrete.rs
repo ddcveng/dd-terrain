@@ -432,10 +432,8 @@ impl World {
             let original_position = &chunks[current_chunk_index].position;
             let position_to_load = original_position.offset(direction_x, direction_z);
 
-            time_it!("Chunk LOAD",
             let mut chunk = minecraft::get_chunk(position_to_load);
             chunk.build_surface();
-            );
 
             let chunk_load = ChunkChange(current_chunk_index, ChunkSource::Direct(chunk));
 
@@ -515,7 +513,7 @@ impl World {
         }
 
         println!(
-            "[INFO] Starting of {} meshes with cell resolution {}.",
+            "[INFO] Starting build of {} meshes with cell resolution {}.",
             chunks_without_mesh.len(),
             options.marching_cubes_cell_size
         );
